@@ -1,0 +1,154 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
+import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
+import type { ExportCertification } from "@/lib/db/repositories/export";
+import { downloadBlob } from "@/lib/utils/download-file";
+import { exportElementToPdf } from "@/lib/utils/export-pdf";
+
+const CONTENT_ID = "export-report-content";
+
+export function ExportReportActions({
+  certs,
+  from,
+  to,
+}: {
+  certs: ExportCertification[];
+  from: string;
+  to: string;
+}) {
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  async function exportPdf() {
+    setExportingPdf(true);
+    try {
+      const element = document.getElementById(CONTENT_ID);
+      if (!element) return;
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const blocks = Array.from(element.querySelectorAll<HTMLElement>("[data-pdf-atomic]"));
+      if (blocks.length === 0) return;
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const usableWidth = pageWidth - margin * 2;
+
+      function estimateHeightMm(el: HTMLElement) {
+        const rect = el.getBoundingClientRect();
+        return (rect.height / rect.width) * usableWidth;
+      }
+
+      let cursorY = margin;
+      let isFirstOnPage = true;
+
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        const canvas = await html2canvas(block, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 0.85);
+        const imgHeight = (canvas.height * usableWidth) / canvas.width;
+
+        let requiredHeight = imgHeight;
+        if (block.dataset.pdfGroupStart === "true" && blocks[i + 1]) {
+          requiredHeight += estimateHeightMm(blocks[i + 1]);
+        }
+
+        if (!isFirstOnPage && cursorY + requiredHeight > pageHeight - margin) {
+          pdf.addPage();
+          cursorY = margin;
+          isFirstOnPage = true;
+        }
+
+        pdf.addImage(imgData, "JPEG", margin, cursorY, usableWidth, imgHeight);
+        cursorY += imgHeight;
+        isFirstOnPage = false;
+      }
+
+      pdf.save(`סיכום_הסמכות_${from}_${to}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed", err);
+      toast.error("ייצוא ה-PDF נכשל");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  async function exportExcel() {
+    const XLSX = await import("xlsx");
+    const rows: Record<string, string | number>[] = [];
+
+    for (const cert of certs) {
+      const baseInfo = {
+        "תאריך התחלה": cert.start_date,
+        "תאריך סיום": cert.end_date ?? "",
+        הסמכה: cert.name,
+        מיקום: cert.location ?? "",
+        סטטוס: CERTIFICATION_STATUS_LABELS[cert.status],
+      };
+
+      if (cert.battalionGroups.every((g) => g.registered.length === 0) && cert.reserve.length === 0) {
+        rows.push({ ...baseInfo, גדוד: "", שם: "", "מספר אישי": "", טלפון: "", פלוגה: "", סוג: "" });
+        continue;
+      }
+
+      for (const group of cert.battalionGroups) {
+        for (const s of group.registered) {
+          rows.push({
+            ...baseInfo,
+            גדוד: group.battalion_name,
+            שם: s.full_name,
+            "מספר אישי": s.personal_number,
+            טלפון: s.phone ?? "",
+            פלוגה: s.company_platoon ?? "",
+            סוג: "רגיל",
+          });
+        }
+      }
+
+      for (const s of cert.reserve) {
+        rows.push({
+          ...baseInfo,
+          גדוד: s.battalion_name ?? "",
+          שם: s.full_name,
+          "מספר אישי": s.personal_number,
+          טלפון: s.phone ?? "",
+          פלוגה: s.company_platoon ?? "",
+          סוג: "עתודה",
+        });
+      }
+    }
+
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "סיכום הסמכות");
+    const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    downloadBlob(
+      new Blob([wbout], { type: "application/octet-stream" }),
+      `סיכום_הסמכות_${from}_${to}.xlsx`
+    );
+  }
+
+  return (
+    <div className="no-print mb-4 flex gap-2 flex-wrap">
+      <Button onClick={exportPdf} disabled={exportingPdf}>
+        {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />}
+        {exportingPdf ? "מכין PDF..." : "ייצוא ל-PDF"}
+      </Button>
+      <Button variant="outline" onClick={exportExcel}>
+        <FileSpreadsheet className="size-4" />
+        ייצוא ל-Excel
+      </Button>
+    </div>
+  );
+}
+
+export { CONTENT_ID as EXPORT_REPORT_CONTENT_ID };
