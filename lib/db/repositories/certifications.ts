@@ -91,6 +91,7 @@ export interface CertificationInput {
   notes?: string | null;
   origin_request_id?: number | null;
   created_by_role?: string;
+  color_hex?: string | null;
 }
 
 export async function createCertification(input: CertificationInput, client?: PoolClient): Promise<number> {
@@ -98,8 +99,8 @@ export async function createCertification(input: CertificationInput, client?: Po
   const result = await execute(
     `INSERT INTO certifications
         (template_id, name, domain, start_date, end_date, location, total_slots, gap_row_id,
-         registration_open, status, notes, origin_request_id, created_by_role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         registration_open, status, notes, origin_request_id, created_by_role, color_hex)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
     [
       input.template_id ?? null,
@@ -115,6 +116,7 @@ export async function createCertification(input: CertificationInput, client?: Po
       input.notes ?? null,
       input.origin_request_id ?? null,
       input.created_by_role ?? "brigade",
+      input.color_hex ?? null,
     ],
     client
   );
@@ -130,8 +132,8 @@ export async function updateCertification(id: number, input: Partial<Certificati
   await execute(
     `UPDATE certifications SET
       name = $1, domain = $2, start_date = $3, end_date = $4, location = $5, total_slots = $6, gap_row_id = $7,
-      registration_open = $8, notes = $9, updated_at = NOW()
-     WHERE id = $10`,
+      registration_open = $8, notes = $9, color_hex = $10, updated_at = NOW()
+     WHERE id = $11`,
   [
     input.name ?? existing.name,
     input.domain ?? existing.domain,
@@ -142,6 +144,7 @@ export async function updateCertification(id: number, input: Partial<Certificati
     input.gap_row_id !== undefined ? input.gap_row_id : existing.gap_row_id,
     input.registration_open !== undefined ? (input.registration_open ? 1 : 0) : existing.registration_open,
     input.notes ?? existing.notes,
+    input.color_hex !== undefined ? input.color_hex : existing.color_hex,
     id,
   ]);
 }

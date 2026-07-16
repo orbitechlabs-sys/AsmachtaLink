@@ -16,6 +16,7 @@ export interface TrainingInput {
   contact_name?: string | null;
   contact_phone?: string | null;
   notes?: string | null;
+  color_hex?: string | null;
 }
 
 export interface TrainingSessionInput {
@@ -69,6 +70,23 @@ export async function listSessionsForTraining(trainingId: number): Promise<Train
   );
 }
 
+export interface TrainingBattalionRef {
+  code: string;
+  name: string;
+  color_hex: string;
+}
+
+/** Distinct battalions a training reaches through its per-unit sessions — used to
+ * label and filter the training on the calendar, mirroring getCertificationBattalions. */
+export async function getTrainingBattalions(trainingId: number): Promise<TrainingBattalionRef[]> {
+  return query<TrainingBattalionRef>(
+    `SELECT DISTINCT b.code, b.name, b.color_hex FROM battalions b
+       WHERE b.id IN (SELECT battalion_id FROM training_sessions WHERE training_id = $1)
+       ORDER BY b.code`,
+    [trainingId]
+  );
+}
+
 export async function createTraining(
   input: TrainingInput,
   sessions: TrainingSessionInput[] = []
@@ -76,8 +94,8 @@ export async function createTraining(
   return withTransaction(async (client) => {
     const result = await execute(
       `INSERT INTO trainings
-          (name, domain, start_date, end_date, contact_name, contact_phone, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (name, domain, start_date, end_date, contact_name, contact_phone, notes, color_hex)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
       [
         input.name,
@@ -87,6 +105,7 @@ export async function createTraining(
         input.contact_name ?? null,
         input.contact_phone ?? null,
         input.notes ?? null,
+        input.color_hex ?? null,
       ],
       client
     );
@@ -105,8 +124,8 @@ export async function updateTraining(id: number, input: Partial<TrainingInput>) 
   await execute(
     `UPDATE trainings SET
       name = $1, domain = $2, start_date = $3, end_date = $4,
-      contact_name = $5, contact_phone = $6, notes = $7, updated_at = NOW()
-     WHERE id = $8`,
+      contact_name = $5, contact_phone = $6, notes = $7, color_hex = $8, updated_at = NOW()
+     WHERE id = $9`,
     [
       input.name ?? existing.name,
       input.domain !== undefined ? input.domain : existing.domain,
@@ -115,6 +134,7 @@ export async function updateTraining(id: number, input: Partial<TrainingInput>) 
       input.contact_name !== undefined ? input.contact_name : existing.contact_name,
       input.contact_phone !== undefined ? input.contact_phone : existing.contact_phone,
       input.notes !== undefined ? input.notes : existing.notes,
+      input.color_hex !== undefined ? input.color_hex : existing.color_hex,
       id,
     ]
   );

@@ -20,6 +20,7 @@ export const trainingSchema = z.object({
   contact_name: z.string().nullish(),
   contact_phone: z.string().nullish(),
   notes: z.string().nullish(),
+  color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "צבע לא תקין").nullish(),
   sessions: z.array(trainingSessionSchema).default([]),
 });
 

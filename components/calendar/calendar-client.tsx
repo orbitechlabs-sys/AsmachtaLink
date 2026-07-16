@@ -8,15 +8,15 @@ import { GanttView } from "@/components/calendar/gantt-view";
 import { YearGanttView } from "@/components/calendar/year-gantt-view";
 import { AgendaView } from "@/components/calendar/agenda-view";
 import type { Battalion } from "@/lib/types";
-import type { CalendarCertification } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 
 type ViewMode = "month" | "gantt" | "year" | "agenda";
 
 export function CalendarClient({
-  certifications,
+  items,
   battalions,
 }: {
-  certifications: CalendarCertification[];
+  items: CalendarItem[];
   battalions: Battalion[];
 }) {
   const [view, setView] = useState<ViewMode>("month");
@@ -32,13 +32,13 @@ export function CalendarClient({
   }, []);
 
   const filtered = useMemo(() => {
-    if (filters.battalionCodes.length === 0) return certifications;
-    return certifications.filter(
-      (c) =>
-        c.battalions.some((b) => filters.battalionCodes.includes(b.code)) ||
-        (c.registration_open === 1 && c.battalions.length === 0)
+    if (filters.battalionCodes.length === 0) return items;
+    return items.filter(
+      (item) =>
+        item.battalions.some((b) => filters.battalionCodes.includes(b.code)) ||
+        (item.registration_open === 1 && item.battalions.length === 0)
     );
-  }, [certifications, filters]);
+  }, [items, filters]);
 
   return (
     <div className="space-y-4">
@@ -58,10 +58,10 @@ export function CalendarClient({
         </Tabs>
       </div>
 
-      {view === "month" && <MonthView certifications={filtered} />}
-      {view === "gantt" && <GanttView certifications={filtered} />}
-      {view === "year" && <YearGanttView certifications={filtered} />}
-      {view === "agenda" && <AgendaView certifications={filtered} />}
+      {view === "month" && <MonthView items={filtered} />}
+      {view === "gantt" && <GanttView items={filtered} />}
+      {view === "year" && <YearGanttView items={filtered} />}
+      {view === "agenda" && <AgendaView items={filtered} />}
     </div>
   );
 }

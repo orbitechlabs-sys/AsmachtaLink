@@ -8,6 +8,8 @@ import {
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listTemplates } from "@/lib/db/repositories/templates";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
+import { listPaletteColors } from "@/lib/db/repositories/course-colors";
+import { randomPaletteColor } from "@/lib/utils/palette";
 import { CertificationForm } from "@/components/certifications/certification-form";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +23,11 @@ export default async function EditCertificationPage({
   const cert = await getCertificationById(Number(id));
   if (!cert) notFound();
 
-  const [battalions, templates, gapRows, prerequisiteRows, quotas, taxRows] = await Promise.all([
+  const [battalions, templates, gapRows, palette, prerequisiteRows, quotas, taxRows] = await Promise.all([
     listBattalions(),
     listTemplates(),
     listGapRows(),
+    listPaletteColors(),
     listPrerequisites(cert.id),
     listQuotas(cert.id),
     listTaxes(cert.id),
@@ -44,6 +47,7 @@ export default async function EditCertificationPage({
         battalions={battalions}
         templates={templates}
         gapRows={gapRows}
+        palette={palette}
         certificationId={cert.id}
         defaultQuotas={defaultQuotas}
         defaultTaxes={defaultTaxes}
@@ -57,6 +61,7 @@ export default async function EditCertificationPage({
           gap_row_id: cert.gap_row_id ?? undefined,
           registration_open: cert.registration_open === 1,
           notes: cert.notes ?? "",
+          color_hex: cert.color_hex ?? randomPaletteColor(palette),
           prerequisites,
         }}
       />

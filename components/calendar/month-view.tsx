@@ -18,10 +18,9 @@ import {
 } from "date-fns";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronRight, ChevronLeft, GraduationCap } from "lucide-react";
 import { CertificationChip } from "@/components/calendar/certification-chip";
-import { certificationColor } from "@/lib/utils/cert-colors";
-import type { CalendarCertification } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 import { getWeekNumber } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils";
 
@@ -29,8 +28,8 @@ const WEEKDAYS = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שבת"];
 const DAY_NUMBER_HEIGHT = 20;
 const LANE_HEIGHT = 20;
 
-function isMultiDay(cert: CalendarCertification): boolean {
-  return Boolean(cert.end_date) && cert.end_date !== cert.start_date;
+function isMultiDay(item: CalendarItem): boolean {
+  return Boolean(item.end_date) && item.end_date !== item.start_date;
 }
 
 function chunkIntoWeeks(days: Date[]): Date[][] {
@@ -41,26 +40,26 @@ function chunkIntoWeeks(days: Date[]): Date[][] {
   return weeks;
 }
 
-/** Assigns each multi-day certification a stable vertical "lane" for its whole span,
- * so it doesn't jump between rows as it crosses week boundaries. */
-function assignLanes(multiDayCerts: CalendarCertification[]): Map<number, number> {
-  const sorted = [...multiDayCerts].sort((a, b) => a.start_date.localeCompare(b.start_date));
+/** Assigns each multi-day item a stable vertical "lane" for its whole span, so it
+ * doesn't jump between rows as it crosses week boundaries. */
+function assignLanes(multiDayItems: CalendarItem[]): Map<string, number> {
+  const sorted = [...multiDayItems].sort((a, b) => a.start_date.localeCompare(b.start_date));
   const laneEnds: string[] = [];
-  const laneOf = new Map<number, number>();
-  for (const cert of sorted) {
-    let lane = laneEnds.findIndex((end) => end < cert.start_date);
+  const laneOf = new Map<string, number>();
+  for (const item of sorted) {
+    let lane = laneEnds.findIndex((end) => end < item.start_date);
     if (lane === -1) {
       lane = laneEnds.length;
-      laneEnds.push(cert.end_date!);
+      laneEnds.push(item.end_date!);
     } else {
-      laneEnds[lane] = cert.end_date!;
+      laneEnds[lane] = item.end_date!;
     }
-    laneOf.set(cert.id, lane);
+    laneOf.set(item.key, lane);
   }
   return laneOf;
 }
 
-export function MonthView({ certifications }: { certifications: CalendarCertification[] }) {
+export function MonthView({ items }: { items: CalendarItem[] }) {
   const [month, setMonth] = useState(new Date());
 
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: 0 });
@@ -68,12 +67,12 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
   const days = eachDayOfInterval({ start, end });
   const weeks = chunkIntoWeeks(days);
 
-  const multiDayCerts = useMemo(() => certifications.filter(isMultiDay), [certifications]);
-  const singleDayCerts = useMemo(() => certifications.filter((c) => !isMultiDay(c)), [certifications]);
-  const laneOf = useMemo(() => assignLanes(multiDayCerts), [multiDayCerts]);
+  const multiDayItems = useMemo(() => items.filter(isMultiDay), [items]);
+  const singleDayItems = useMemo(() => items.filter((c) => !isMultiDay(c)), [items]);
+  const laneOf = useMemo(() => assignLanes(multiDayItems), [multiDayItems]);
 
-  function singleDayCertsOnDay(day: Date) {
-    return singleDayCerts.filter((c) => isSameDay(day, new Date(c.start_date)));
+  function singleDayItemsOnDay(day: Date) {
+    return singleDayItems.filter((c) => isSameDay(day, new Date(c.start_date)));
   }
 
   return (
@@ -98,20 +97,20 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
           const weekStart = week[0];
           const weekEnd = week[6];
 
-          const weekBars = multiDayCerts
-            .map((cert) => {
-              const certStart = new Date(cert.start_date);
-              const certEnd = new Date(cert.end_date!);
-              if (certEnd < weekStart || certStart > weekEnd) return null;
-              const clippedStart = maxDate([certStart, weekStart]);
-              const clippedEnd = minDate([certEnd, weekEnd]);
+          const weekBars = multiDayItems
+            .map((item) => {
+              const itemStart = new Date(item.start_date);
+              const itemEnd = new Date(item.end_date!);
+              if (itemEnd < weekStart || itemStart > weekEnd) return null;
+              const clippedStart = maxDate([itemStart, weekStart]);
+              const clippedEnd = minDate([itemEnd, weekEnd]);
               return {
-                cert,
+                item,
                 startCol: differenceInCalendarDays(clippedStart, weekStart),
                 endCol: differenceInCalendarDays(clippedEnd, weekStart),
-                lane: laneOf.get(cert.id) ?? 0,
-                isTrueStart: certStart >= weekStart,
-                isTrueEnd: certEnd <= weekEnd,
+                lane: laneOf.get(item.key) ?? 0,
+                isTrueStart: itemStart >= weekStart,
+                isTrueEnd: itemEnd <= weekEnd,
               };
             })
             .filter((b): b is NonNullable<typeof b> => b !== null);
@@ -128,7 +127,7 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
               <div className="relative" style={{ gridColumn: "span 7" }}>
                 <div className="grid grid-cols-7 gap-1">
                   {week.map((day) => {
-                    const dayCerts = singleDayCertsOnDay(day);
+                    const dayItems = singleDayItemsOnDay(day);
                     return (
                       <div
                         key={day.toISOString()}
@@ -139,12 +138,12 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
                       >
                         <div className="text-xs">{format(day, "d")}</div>
                         <div className="space-y-0.5" style={{ marginTop: laneCount * LANE_HEIGHT }}>
-                          {dayCerts.slice(0, 3).map((c) => (
-                            <CertificationChip key={c.id} cert={c} />
+                          {dayItems.slice(0, 3).map((c) => (
+                            <CertificationChip key={c.key} item={c} />
                           ))}
-                          {dayCerts.length > 3 && (
+                          {dayItems.length > 3 && (
                             <div className="text-[10px] text-muted-foreground">
-                              +{dayCerts.length - 3} נוספות
+                              +{dayItems.length - 3} נוספות
                             </div>
                           )}
                         </div>
@@ -158,10 +157,10 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
                     className="absolute inset-x-0 grid grid-cols-7 gap-1 pointer-events-none"
                     style={{ top: DAY_NUMBER_HEIGHT }}
                   >
-                    {weekBars.map(({ cert, startCol, endCol, lane, isTrueStart, isTrueEnd }) => (
+                    {weekBars.map(({ item, startCol, endCol, lane, isTrueStart, isTrueEnd }) => (
                       <Link
-                        key={cert.id}
-                        href={`/certifications/${cert.id}`}
+                        key={item.key}
+                        href={item.href}
                         className={cn(
                           "pointer-events-auto text-white text-[10px] px-1 truncate flex items-center gap-1 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
@@ -173,11 +172,14 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
                           gridRow: 1,
                           marginTop: lane * LANE_HEIGHT,
                           height: LANE_HEIGHT - 3,
-                          backgroundColor: certificationColor(cert.name),
+                          backgroundColor: item.color,
                         }}
-                        title={`${cert.name}${cert.location ? " · " + cert.location : ""} (${cert.start_date} – ${cert.end_date})`}
+                        title={`${item.name}${item.location ? " · " + item.location : ""} (${item.start_date} – ${item.end_date})`}
                       >
-                        {cert.battalions.slice(0, 3).map((b) => (
+                        {item.kind === "training" && (
+                          <GraduationCap className="size-2.5 shrink-0" aria-label="הדרכה" />
+                        )}
+                        {item.battalions.slice(0, 3).map((b) => (
                           <span
                             key={b.code}
                             className="size-1.5 rounded-full border border-white/70 shrink-0"
@@ -185,9 +187,9 @@ export function MonthView({ certifications }: { certifications: CalendarCertific
                           />
                         ))}
                         <span className="truncate">
-                          <span className="font-bold">{cert.name}</span>
-                          {cert.location && (
-                            <span className="text-[9px] font-normal opacity-80"> - {cert.location}</span>
+                          <span className="font-bold">{item.name}</span>
+                          {item.location && (
+                            <span className="text-[9px] font-normal opacity-80"> - {item.location}</span>
                           )}
                         </span>
                       </Link>

@@ -3,21 +3,21 @@
 import { useMemo } from "react";
 import { addDays, differenceInCalendarDays, eachDayOfInterval, format, min, max } from "date-fns";
 import Link from "next/link";
+import { GraduationCap } from "lucide-react";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
-import type { CalendarCertification } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 import { getWeekNumber, getHebrewWeekdayShort } from "@/lib/utils/dates";
-import { certificationColor } from "@/lib/utils/cert-colors";
 import { cn } from "@/lib/utils";
 
 const DAY_MIN_WIDTH = 40;
 const LABEL_WIDTH = 220;
 
 export function GanttView({
-  certifications,
+  items,
   rangeStart: rangeStartOverride,
   rangeEnd: rangeEndOverride,
 }: {
-  certifications: CalendarCertification[];
+  items: CalendarItem[];
   rangeStart?: Date;
   rangeEnd?: Date;
 }) {
@@ -30,17 +30,17 @@ export function GanttView({
       };
     }
     const today = new Date();
-    if (certifications.length === 0) {
+    if (items.length === 0) {
       const start = addDays(today, -7);
       const end = addDays(today, 30);
       return { rangeStart: start, rangeEnd: end, days: eachDayOfInterval({ start, end }) };
     }
-    const starts = certifications.map((c) => new Date(c.start_date));
-    const ends = certifications.map((c) => new Date(c.end_date ?? c.start_date));
+    const starts = items.map((c) => new Date(c.start_date));
+    const ends = items.map((c) => new Date(c.end_date ?? c.start_date));
     const start = min([...starts, addDays(today, -7)]);
     const end = max([...ends, addDays(today, 14)]);
     return { rangeStart: start, rangeEnd: end, days: eachDayOfInterval({ start, end }) };
-  }, [certifications, rangeStartOverride, rangeEndOverride]);
+  }, [items, rangeStartOverride, rangeEndOverride]);
 
   const weekGroups = useMemo(() => {
     const groups: { weekNumber: number; count: number }[] = [];
@@ -56,8 +56,8 @@ export function GanttView({
     return groups;
   }, [days]);
 
-  if (certifications.length === 0) {
-    return <p className="text-muted-foreground text-sm">אין הסמכות להצגה בטווח זה.</p>;
+  if (items.length === 0) {
+    return <p className="text-muted-foreground text-sm">אין פריטים להצגה בטווח זה.</p>;
   }
 
   const daysAreaMinWidth = days.length * DAY_MIN_WIDTH;
@@ -71,7 +71,7 @@ export function GanttView({
             className="shrink-0 border-e border-b p-2 text-xs font-medium text-muted-foreground"
             style={{ width: LABEL_WIDTH }}
           >
-            הסמכה
+            פריט
           </div>
           <div
             className="grid border-b flex-1"
@@ -105,24 +105,24 @@ export function GanttView({
             ))}
           </div>
         </div>
-        {certifications.map((cert) => {
-          const certStart = new Date(cert.start_date);
-          const certEnd = new Date(cert.end_date ?? cert.start_date);
-          const isTrueStart = certStart >= rangeStart;
-          const isTrueEnd = certEnd <= rangeEnd;
-          const clippedStart = max([certStart, rangeStart]);
-          const clippedEnd = min([certEnd, rangeEnd]);
+        {items.map((item) => {
+          const itemStart = new Date(item.start_date);
+          const itemEnd = new Date(item.end_date ?? item.start_date);
+          const isTrueStart = itemStart >= rangeStart;
+          const isTrueEnd = itemEnd <= rangeEnd;
+          const clippedStart = max([itemStart, rangeStart]);
+          const clippedEnd = min([itemEnd, rangeEnd]);
           const offset = differenceInCalendarDays(clippedStart, rangeStart);
           const duration = differenceInCalendarDays(clippedEnd, clippedStart) + 1;
           const rightPct = (offset / days.length) * 100;
           const widthPct = (duration / days.length) * 100;
           return (
-            <div key={cert.id} className="flex border-b hover:bg-accent/30">
+            <div key={item.key} className="flex border-b hover:bg-accent/30">
               <div
                 className="shrink-0 border-e p-2 text-xs flex items-center gap-1 overflow-hidden"
                 style={{ width: LABEL_WIDTH }}
               >
-                {cert.battalions.map((b) => (
+                {item.battalions.map((b) => (
                   <span
                     key={b.code}
                     className="size-2 rounded-full shrink-0"
@@ -130,11 +130,14 @@ export function GanttView({
                   />
                 ))}
                 <div className="min-w-0">
-                  <Link href={`/certifications/${cert.id}`} className="hover:underline truncate block">
-                    {cert.name}
+                  <Link href={item.href} className="hover:underline truncate flex items-center gap-1">
+                    {item.kind === "training" && (
+                      <GraduationCap className="size-3 shrink-0 text-muted-foreground" aria-label="הדרכה" />
+                    )}
+                    <span className="truncate">{item.name}</span>
                   </Link>
-                  {cert.location && (
-                    <div className="text-[10px] text-muted-foreground truncate">{cert.location}</div>
+                  {item.location && (
+                    <div className="text-[10px] text-muted-foreground truncate">{item.location}</div>
                   )}
                 </div>
               </div>
@@ -143,25 +146,28 @@ export function GanttView({
                 style={{ height: 40, minWidth: daysAreaMinWidth }}
               >
                 <Link
-                  href={`/certifications/${cert.id}`}
+                  href={item.href}
                   className={cn(
-                    "absolute top-1.5 h-7 flex items-center px-2 text-[10px] text-white overflow-hidden",
+                    "absolute top-1.5 h-7 flex items-center gap-1 px-2 text-[10px] text-white overflow-hidden",
                     isTrueStart ? "rounded-s-md" : "rounded-s-none",
                     isTrueEnd ? "rounded-e-md" : "rounded-e-none"
                   )}
                   style={{
                     right: `${rightPct}%`,
                     width: `max(${widthPct}%, 20px)`,
-                    backgroundColor: certificationColor(cert.name),
+                    backgroundColor: item.color,
                   }}
-                  title={`${cert.name}${cert.location ? " · " + cert.location : ""} (${cert.start_date}${
-                    cert.end_date ? " - " + cert.end_date : ""
+                  title={`${item.name}${item.location ? " · " + item.location : ""} (${item.start_date}${
+                    item.end_date ? " - " + item.end_date : ""
                   })${!isTrueStart || !isTrueEnd ? " — ממשיך מחוץ לטווח המוצג" : ""}`}
                 >
+                  {item.kind === "training" && (
+                    <GraduationCap className="size-3 shrink-0" aria-label="הדרכה" />
+                  )}
                   <span className="truncate">
-                    <span className="font-bold">{cert.name}</span>
-                    {cert.location && (
-                      <span className="text-[10px] font-normal opacity-80"> - {cert.location}</span>
+                    <span className="font-bold">{item.name}</span>
+                    {item.location && (
+                      <span className="text-[10px] font-normal opacity-80"> - {item.location}</span>
                     )}
                   </span>
                 </Link>

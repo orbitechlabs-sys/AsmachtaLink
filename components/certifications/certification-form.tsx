@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ColorSelect } from "@/components/ui/color-select";
 import { Plus, Trash2 } from "lucide-react";
 import type { Battalion, CertificationTemplate } from "@/lib/types";
 import type { GapRow } from "@/lib/db/repositories/certification-gaps";
@@ -28,6 +29,7 @@ interface Props {
   battalions: Battalion[];
   templates: CertificationTemplate[];
   gapRows?: GapRow[];
+  palette: string[];
   certificationId?: number;
   defaultValues?: Partial<CertificationInputValues>;
   defaultQuotas?: Record<number, number>;
@@ -38,6 +40,7 @@ export function CertificationForm({
   battalions,
   templates,
   gapRows = [],
+  palette,
   certificationId,
   defaultValues,
   defaultQuotas,
@@ -68,6 +71,7 @@ export function CertificationForm({
       total_slots: undefined,
       registration_open: false,
       notes: "",
+      color_hex: "",
       prerequisites: [],
       quotas: [],
       ...defaultValues,
@@ -137,10 +141,18 @@ export function CertificationForm({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1.5 md:col-span-2">
+        <div className="space-y-1.5">
           <Label>שם ההסמכה</Label>
           <Input {...register("name")} />
           {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+        </div>
+        <div className="space-y-1.5">
+          <Label>צבע</Label>
+          <ColorSelect
+            value={(watch("color_hex") as string) ?? ""}
+            onChange={(hex) => setValue("color_hex", hex)}
+            palette={palette}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>תחום</Label>

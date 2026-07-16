@@ -1,5 +1,16 @@
 import { execute, query, queryOne } from "@/lib/db/client";
 import { paletteColorAt } from "@/lib/utils/cert-colors";
+import { PRESET_PALETTE } from "@/lib/utils/palette";
+
+/** Distinct colors offered in the inline color picker. Uses the predefined palette
+ * stored in course_colors; falls back to a fixed preset set when that table is empty. */
+export async function listPaletteColors(): Promise<string[]> {
+  const rows = await query<{ color_hex: string }>(
+    "SELECT DISTINCT color_hex FROM course_colors WHERE color_hex IS NOT NULL ORDER BY color_hex"
+  );
+  const colors = rows.map((r) => r.color_hex).filter(Boolean);
+  return colors.length > 0 ? colors : PRESET_PALETTE;
+}
 
 /** Course name -> assigned color, shared by template-backed and ad-hoc
  * certifications so every instance of a course colors the same everywhere. */

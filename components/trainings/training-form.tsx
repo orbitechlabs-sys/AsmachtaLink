@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ColorSelect } from "@/components/ui/color-select";
 import { Plus, Trash2 } from "lucide-react";
 import { getHebrewWeekdayShort } from "@/lib/utils/dates";
 import type { Battalion, TrainingSession } from "@/lib/types";
@@ -31,6 +32,7 @@ interface SessionBlock {
 
 interface Props {
   battalions: Battalion[];
+  palette: string[];
   trainingId?: number;
   defaultValues?: Partial<TrainingInputValues>;
   defaultSessions?: TrainingSession[];
@@ -42,7 +44,7 @@ function newKey() {
   return `b${blockCounter}`;
 }
 
-export function TrainingForm({ battalions, trainingId, defaultValues, defaultSessions }: Props) {
+export function TrainingForm({ battalions, palette, trainingId, defaultValues, defaultSessions }: Props) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [blocks, setBlocks] = useState<SessionBlock[]>(
@@ -62,6 +64,7 @@ export function TrainingForm({ battalions, trainingId, defaultValues, defaultSes
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<TrainingInputValues, unknown, TrainingFormValues>({
     resolver: zodResolver(trainingSchema),
@@ -73,6 +76,7 @@ export function TrainingForm({ battalions, trainingId, defaultValues, defaultSes
       contact_name: "",
       contact_phone: "",
       notes: "",
+      color_hex: "",
       sessions: [],
       ...defaultValues,
     },
@@ -155,10 +159,18 @@ export function TrainingForm({ battalions, trainingId, defaultValues, defaultSes
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-2xl">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1.5 md:col-span-2">
+        <div className="space-y-1.5">
           <Label>שם ההדרכה</Label>
           <Input {...register("name")} placeholder="הדרכת עזרה ראשונה" />
           {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+        </div>
+        <div className="space-y-1.5">
+          <Label>צבע</Label>
+          <ColorSelect
+            value={(watch("color_hex") as string) ?? ""}
+            onChange={(hex) => setValue("color_hex", hex)}
+            palette={palette}
+          />
         </div>
         <div className="space-y-1.5 md:col-span-2">
           <Label>תחום</Label>

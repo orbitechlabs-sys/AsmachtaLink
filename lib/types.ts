@@ -146,6 +146,7 @@ export interface Certification {
   origin_request_id: number | null;
   gap_row_id: number | null;
   created_by_role: string;
+  color_hex: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -233,6 +234,7 @@ export interface Training {
   contact_name: string | null;
   contact_phone: string | null;
   notes: string | null;
+  color_hex: string | null;
   created_at: string;
   updated_at: string;
 }

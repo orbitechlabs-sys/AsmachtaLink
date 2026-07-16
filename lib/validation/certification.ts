@@ -12,6 +12,7 @@ export const certificationSchema = z.object({
   gap_row_id: z.coerce.number().int().nullish(),
   registration_open: z.boolean().default(false),
   notes: z.string().nullish(),
+  color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "צבע לא תקין").nullish(),
   prerequisites: z.array(z.string()).default([]),
   quotas: z
     .array(z.object({ battalion_id: z.number(), allocated_slots: z.number().int().min(0) }))

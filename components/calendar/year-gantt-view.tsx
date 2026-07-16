@@ -3,12 +3,11 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ChevronRight, ChevronLeft, FileDown, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, FileDown, Loader2, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
-import { certificationColor } from "@/lib/utils/cert-colors";
 import { exportElementToSinglePagePdf } from "@/lib/utils/export-pdf";
-import type { CalendarCertification } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 import { cn } from "@/lib/utils";
 
 const MONTH_NAMES = [
@@ -33,16 +32,16 @@ const LANE_HEIGHT = 18;
 const CONTENT_ID = "year-gantt-content";
 const DAY_COLUMNS_TEMPLATE = `repeat(${TOTAL_DAY_COLUMNS}, ${DAY_CELL_WIDTH}px)`;
 
-interface CertSpan {
-  cert: CalendarCertification;
+interface ItemSpan {
+  item: CalendarItem;
   start: Date;
   end: Date;
 }
 
-function assignLanes(spans: CertSpan[]): Map<number, number> {
+function assignLanes(spans: ItemSpan[]): Map<string, number> {
   const sorted = [...spans].sort((a, b) => a.start.getTime() - b.start.getTime());
   const laneEnds: number[] = [];
-  const laneOf = new Map<number, number>();
+  const laneOf = new Map<string, number>();
   for (const span of sorted) {
     let lane = laneEnds.findIndex((end) => end < span.start.getTime());
     if (lane === -1) {
@@ -51,27 +50,27 @@ function assignLanes(spans: CertSpan[]): Map<number, number> {
     } else {
       laneEnds[lane] = span.end.getTime();
     }
-    laneOf.set(span.cert.id, lane);
+    laneOf.set(span.item.key, lane);
   }
   return laneOf;
 }
 
-export function YearGanttView({ certifications }: { certifications: CalendarCertification[] }) {
+export function YearGanttView({ items }: { items: CalendarItem[] }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [exporting, setExporting] = useState(false);
 
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31);
 
-  const spans: CertSpan[] = useMemo(() => {
-    return certifications
-      .map((cert) => {
-        const start = new Date(cert.start_date);
-        const end = new Date(cert.end_date ?? cert.start_date);
-        return { cert, start, end };
+  const spans: ItemSpan[] = useMemo(() => {
+    return items
+      .map((item) => {
+        const start = new Date(item.start_date);
+        const end = new Date(item.end_date ?? item.start_date);
+        return { item, start, end };
       })
       .filter((s) => s.end >= yearStart && s.start <= yearEnd);
-  }, [certifications, year]);
+  }, [items, year]);
 
   const laneOf = useMemo(() => assignLanes(spans), [spans]);
 
@@ -118,17 +117,17 @@ export function YearGanttView({ certifications }: { certifications: CalendarCert
             const monthEnd = new Date(year, monthIdx, daysInMonth);
 
             const monthBars = spans
-              .map(({ cert, start, end }) => {
+              .map(({ item, start, end }) => {
                 if (end < monthStart || start > monthEnd) return null;
                 const clippedStart = start < monthStart ? monthStart : start;
                 const clippedEnd = end > monthEnd ? monthEnd : end;
                 const startCol = clippedStart.getDate() - 1;
                 const endCol = clippedEnd.getDate() - 1;
                 return {
-                  cert,
+                  item,
                   startCol,
                   endCol,
-                  lane: laneOf.get(cert.id) ?? 0,
+                  lane: laneOf.get(item.key) ?? 0,
                   isTrueStart: start >= monthStart,
                   isTrueEnd: end <= monthEnd,
                 };
@@ -171,10 +170,10 @@ export function YearGanttView({ certifications }: { certifications: CalendarCert
                     className="absolute inset-x-0 grid"
                     style={{ gridTemplateColumns: DAY_COLUMNS_TEMPLATE, top: 12 }}
                   >
-                    {monthBars.map(({ cert, startCol, endCol, lane, isTrueStart, isTrueEnd }) => (
+                    {monthBars.map(({ item, startCol, endCol, lane, isTrueStart, isTrueEnd }) => (
                       <Link
-                        key={cert.id}
-                        href={`/certifications/${cert.id}`}
+                        key={item.key}
+                        href={item.href}
                         className={cn(
                           "text-white text-[9px] px-1 truncate flex items-center gap-0.5 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
@@ -186,11 +185,14 @@ export function YearGanttView({ certifications }: { certifications: CalendarCert
                           gridRow: 1,
                           marginTop: lane * LANE_HEIGHT,
                           height: LANE_HEIGHT - 3,
-                          backgroundColor: certificationColor(cert.name),
+                          backgroundColor: item.color,
                         }}
-                        title={`${cert.name}${cert.location ? " · " + cert.location : ""} (${cert.start_date} – ${cert.end_date ?? cert.start_date})`}
+                        title={`${item.name}${item.location ? " · " + item.location : ""} (${item.start_date} – ${item.end_date ?? item.start_date})`}
                       >
-                        {cert.battalions.slice(0, 2).map((b) => (
+                        {item.kind === "training" && (
+                          <GraduationCap className="size-2 shrink-0" aria-label="הדרכה" />
+                        )}
+                        {item.battalions.slice(0, 2).map((b) => (
                           <span
                             key={b.code}
                             className="size-1 rounded-full border border-white/70 shrink-0"
@@ -199,9 +201,9 @@ export function YearGanttView({ certifications }: { certifications: CalendarCert
                         ))}
                         {endCol - startCol >= 2 && (
                           <span className="truncate">
-                            <span className="font-bold">{cert.name}</span>
-                            {cert.location && endCol - startCol >= 6 && (
-                              <span className="font-normal opacity-80"> - {cert.location}</span>
+                            <span className="font-bold">{item.name}</span>
+                            {item.location && endCol - startCol >= 6 && (
+                              <span className="font-normal opacity-80"> - {item.location}</span>
                             )}
                           </span>
                         )}

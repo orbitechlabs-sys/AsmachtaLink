@@ -5,6 +5,7 @@ import { getExportData } from "@/lib/db/repositories/export";
 import { getCertificationBattalions, listCertifications } from "@/lib/db/repositories/certifications";
 import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
 import { GanttView } from "@/components/calendar/gantt-view";
+import { certificationToCalendarItem } from "@/components/calendar/types";
 import { SlotStatusIndicator } from "@/components/certifications/slot-status-indicator";
 import { ExportReportActions, EXPORT_REPORT_CONTENT_ID } from "@/components/reports/export-report-actions";
 
@@ -26,10 +27,11 @@ export default async function ExportPrintPage({
   const certs = await getExportData(from, to);
   certs.sort((a, b) => a.start_date.localeCompare(b.start_date));
 
-  const ganttCerts = await Promise.all((await listCertifications({ from, to })).map(async (c) => ({
-    ...c,
-    battalions: await getCertificationBattalions(c.id),
-  })));
+  const ganttItems = await Promise.all(
+    (await listCertifications({ from, to })).map(async (c) =>
+      certificationToCalendarItem({ ...c, battalions: await getCertificationBattalions(c.id) })
+    )
+  );
 
   const registrationGaps = certs.filter(
     (c) => c.total_slots !== null && c.registered_count < c.total_slots && c.status !== "cancelled"
@@ -57,11 +59,11 @@ export default async function ExportPrintPage({
         </p>
       </div>
 
-      {ganttCerts.length > 0 && (
+      {ganttItems.length > 0 && (
         <div data-pdf-atomic className="space-y-2 break-inside-avoid">
           <h2 className="font-bold">תצוגת גאנט</h2>
           <GanttView
-            certifications={ganttCerts}
+            items={ganttItems}
             rangeStart={new Date(from)}
             rangeEnd={new Date(to)}
           />

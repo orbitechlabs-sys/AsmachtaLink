@@ -14,7 +14,7 @@ import {
   type RosterStatus,
 } from "@/lib/types";
 import type { ExportCertification } from "@/lib/db/repositories/export";
-import type { CalendarCertification } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 
 function hebrewDate(iso: string) {
   return format(new Date(iso), "EEEE, d/M/yyyy", { locale: he });
@@ -35,7 +35,7 @@ export function ExportReportBody({
   to,
 }: {
   certs: ExportCertification[];
-  ganttCerts: CalendarCertification[];
+  ganttCerts: CalendarItem[];
   from: string;
   to: string;
 }) {
@@ -134,7 +134,7 @@ export function ExportReportBody({
           <div data-pdf-atomic className="space-y-2 break-inside-avoid">
             <h2 className="font-bold">תצוגת גאנט</h2>
             <GanttView
-              certifications={selectedGanttCerts}
+              items={selectedGanttCerts}
               rangeStart={new Date(from)}
               rangeEnd={new Date(to)}
             />
