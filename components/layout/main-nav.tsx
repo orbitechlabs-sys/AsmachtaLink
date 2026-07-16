@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/calendar", label: "לוח שנה" },
+  { href: "/trainings", label: "הדרכות" },
   { href: "/certifications", label: "הסמכות" },
   { href: "/requests", label: "דרישות גדודים" },
   { href: "/templates", label: "בנק הסמכות" },

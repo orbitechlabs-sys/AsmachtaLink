@@ -16,6 +16,10 @@ export function canApproveRoster(role: Role): boolean {
   return isBrigade(role);
 }
 
+export function canManageTrainings(role: Role): boolean {
+  return isBrigade(role);
+}
+
 export function canApproveRequests(role: Role): boolean {
   return isBrigade(role);
 }

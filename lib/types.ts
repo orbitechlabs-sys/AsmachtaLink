@@ -224,6 +224,38 @@ export interface StatusHistoryEntry {
   changed_at: string;
 }
 
+export interface Training {
+  id: number;
+  name: string;
+  domain: string | null;
+  start_date: string;
+  end_date: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrainingWithCounts extends Training {
+  session_count: number;
+  unit_count: number;
+}
+
+export interface TrainingSession {
+  id: number;
+  training_id: number;
+  battalion_id: number;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+  instructor_name: string | null;
+  instructor_phone: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type NotificationType =
   | "certification_opened"
   | "opened_from_request"

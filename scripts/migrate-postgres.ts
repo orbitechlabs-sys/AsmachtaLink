@@ -12,8 +12,11 @@ if (!url) {
 }
 
 async function main() {
-  const sqlPath = path.join(process.cwd(), "migrations", "postgres", "001_init.sql");
-  const sql = fs.readFileSync(sqlPath, "utf8");
+  const dir = path.join(process.cwd(), "migrations", "postgres");
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 
   const client = new Client({
     connectionString: url,
@@ -23,8 +26,11 @@ async function main() {
   console.log("Connecting to Supabase Postgres...");
   await client.connect();
   try {
-    await client.query(sql);
-    console.log("Applied migrations/postgres/001_init.sql successfully.");
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(dir, file), "utf8");
+      await client.query(sql);
+      console.log(`Applied migrations/postgres/${file} successfully.`);
+    }
   } finally {
     await client.end();
   }
