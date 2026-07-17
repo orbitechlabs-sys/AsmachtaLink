@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { isAuthRoute } from "@/lib/auth/routes";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -21,6 +22,9 @@ const LINKS = [
 export function MainNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  // Auth pages render a clean centered card with no app chrome.
+  if (isAuthRoute(pathname)) return null;
 
   return (
     <header className="bg-card relative border-b-2 border-primary/20">

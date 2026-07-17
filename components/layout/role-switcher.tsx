@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/auth/role-context";
 import {
   DropdownMenu,
@@ -11,12 +12,21 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Shield } from "lucide-react";
+import { ChevronDown, LogOut, Shield } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import type { Battalion } from "@/lib/types";
 
 export function RoleSwitcher() {
+  const router = useRouter();
   const { role, setRole } = useRole();
   const [battalions, setBattalions] = useState<Battalion[]>([]);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   useEffect(() => {
     fetch("/api/battalions")
@@ -70,6 +80,14 @@ export function RoleSwitcher() {
             {b.name}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={handleLogout}
+          className="text-destructive focus:text-destructive"
+        >
+          <LogOut className="size-4" />
+          התנתקות
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

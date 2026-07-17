@@ -3,6 +3,7 @@ import { Heebo } from "next/font/google";
 import "./globals.css";
 import { MainNav } from "@/components/layout/main-nav";
 import { OpenTasksBar } from "@/components/layout/open-tasks-bar";
+import { ChromeGate } from "@/components/layout/chrome-gate";
 import { Toaster } from "@/components/ui/sonner";
 import { RoleProvider } from "@/lib/auth/role-context";
 import { getCurrentRole } from "@/lib/auth/current-role";
@@ -30,7 +31,11 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <RoleProvider>
           <MainNav />
-          {isBrigade(role) && <OpenTasksBar />}
+          {isBrigade(role) && (
+            <ChromeGate>
+              <OpenTasksBar />
+            </ChromeGate>
+          )}
           <main className="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto">
             {children}
           </main>
