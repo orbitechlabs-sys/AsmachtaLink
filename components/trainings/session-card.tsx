@@ -153,7 +153,7 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
       style={{ backgroundColor: color }}
     >
       {canManage && (
-        <div className="absolute top-2 left-2 flex gap-1">
+        <div className="absolute top-2 end-2 flex gap-1">
           <button
             type="button"
             onClick={() => setEditing(true)}
