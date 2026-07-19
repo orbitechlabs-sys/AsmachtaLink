@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
-import type { ExportCertification } from "@/lib/db/repositories/export";
+import type { ExportCertification, ExportTraining } from "@/lib/db/repositories/export";
 import { downloadBlob } from "@/lib/utils/download-file";
 import { exportElementToPdf } from "@/lib/utils/export-pdf";
 
@@ -13,10 +13,12 @@ const CONTENT_ID = "export-report-content";
 
 export function ExportReportActions({
   certs,
+  trainings = [],
   from,
   to,
 }: {
   certs: ExportCertification[];
+  trainings?: ExportTraining[];
   from: string;
   to: string;
 }) {
@@ -127,9 +129,47 @@ export function ExportReportActions({
       }
     }
 
-    const sheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(workbook, sheet, "סיכום הסמכות");
+
+    if (trainings.length > 0) {
+      const trainingRows: Record<string, string | number>[] = [];
+      for (const training of trainings) {
+        const baseInfo = {
+          הדרכה: training.name,
+          תחום: training.domain ?? "",
+        };
+        if (training.sessions.length === 0) {
+          trainingRows.push({
+            תאריך: "",
+            "שעת התחלה": "",
+            "שעת סיום": "",
+            ...baseInfo,
+            גדוד: "",
+            מיקום: "",
+            מדריך: "",
+            "טלפון מדריך": "",
+          });
+          continue;
+        }
+        for (const s of training.sessions) {
+          trainingRows.push({
+            תאריך: s.session_date,
+            "שעת התחלה": s.start_time,
+            "שעת סיום": s.end_time,
+            ...baseInfo,
+            גדוד: s.battalion_name,
+            מיקום: s.location ?? "",
+            מדריך: s.instructor_name ?? "",
+            "טלפון מדריך": s.instructor_phone ?? "",
+          });
+        }
+      }
+      const trainingSheet = XLSX.utils.json_to_sheet(trainingRows);
+      XLSX.utils.book_append_sheet(workbook, trainingSheet, "הדרכות");
+    }
+
     const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
     downloadBlob(
       new Blob([wbout], { type: "application/octet-stream" }),

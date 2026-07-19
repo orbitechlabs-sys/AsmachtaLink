@@ -22,22 +22,22 @@ export function DateRangePicker({ from, to }: { from: string; to: string }) {
     router.push(`/reports?from=${newFrom}&to=${newTo}`);
   }
 
-  function quickRange(days: number) {
-    const start = new Date();
-    apply(toIso(start), toIso(addDays(start, days)));
+  function previousRange(days: number) {
+    const today = new Date();
+    apply(toIso(addDays(today, -days)), toIso(today));
   }
 
   return (
     <div className="no-print flex flex-wrap items-end gap-3 rounded-lg border p-3">
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => quickRange(7)}>
-          שבוע קדימה
+        <Button variant="outline" size="sm" onClick={() => previousRange(7)}>
+          שבוע קודם
         </Button>
-        <Button variant="outline" size="sm" onClick={() => quickRange(14)}>
-          שבועיים קדימה
+        <Button variant="outline" size="sm" onClick={() => previousRange(14)}>
+          שבועיים קודם
         </Button>
-        <Button variant="outline" size="sm" onClick={() => quickRange(30)}>
-          חודש קדימה
+        <Button variant="outline" size="sm" onClick={() => previousRange(30)}>
+          חודש קודם
         </Button>
       </div>
       <div className="flex items-end gap-2">

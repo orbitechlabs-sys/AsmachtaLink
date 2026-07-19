@@ -1,4 +1,4 @@
-import type { CertificationStatus, CertificationWithCounts } from "@/lib/types";
+import type { CertificationStatus, CertificationWithCounts, Training } from "@/lib/types";
 import { certificationColor } from "@/lib/utils/cert-colors";
 
 export type CalendarBattalionRef = {
@@ -55,5 +55,26 @@ export function certificationToCalendarItem(
     registered_count: cert.registered_count,
     slots_remaining: cert.slots_remaining,
     total_slots: cert.total_slots,
+  };
+}
+
+/** Projects a training (with its distinct battalion refs) into a CalendarItem. Trainings
+ * carry no status/slots and their location lives per-session, so those fields are omitted. */
+export function trainingToCalendarItem(
+  training: Training,
+  battalions: CalendarBattalionRef[]
+): CalendarItem {
+  return {
+    kind: "training",
+    id: training.id,
+    key: `training-${training.id}`,
+    name: training.name,
+    start_date: training.start_date,
+    end_date: training.end_date,
+    location: null,
+    href: `/trainings/${training.id}`,
+    color: training.color_hex || certificationColor(training.domain || training.name),
+    battalions,
+    registration_open: 0,
   };
 }

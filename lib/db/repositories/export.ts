@@ -6,6 +6,8 @@ import {
 } from "@/lib/db/repositories/certifications";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listReserveForCertification, listRosterForCertification } from "@/lib/db/repositories/roster";
+import { listSessionsForTraining, listTrainings } from "@/lib/db/repositories/trainings";
+import { certificationColor } from "@/lib/utils/cert-colors";
 import type { CertificationStatus, RosterStatus } from "@/lib/types";
 
 export interface ExportRosterEntry {
@@ -114,4 +116,57 @@ export async function getExportData(from: string, to: string): Promise<ExportCer
       })),
     };
   }));
+}
+
+export interface ExportTrainingSession {
+  battalion_name: string;
+  battalion_color: string;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+  instructor_name: string | null;
+  instructor_phone: string | null;
+}
+
+export interface ExportTraining {
+  id: number;
+  name: string;
+  domain: string | null;
+  start_date: string;
+  end_date: string | null;
+  color: string;
+  sessions: ExportTrainingSession[];
+}
+
+export async function getTrainingExportData(from: string, to: string): Promise<ExportTraining[]> {
+  const [trainings, battalions] = await Promise.all([listTrainings({ from, to }), listBattalions()]);
+  const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+
+  return Promise.all(
+    trainings.map(async (training) => {
+      const sessions = await listSessionsForTraining(training.id);
+      return {
+        id: training.id,
+        name: training.name,
+        domain: training.domain,
+        start_date: training.start_date,
+        end_date: training.end_date,
+        color: training.color_hex || certificationColor(training.domain || training.name),
+        sessions: sessions.map((s) => {
+          const b = battalionMap.get(s.battalion_id);
+          return {
+            battalion_name: b?.name ?? "לא ידוע",
+            battalion_color: b?.color_hex ?? "#64748b",
+            session_date: s.session_date,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            location: s.location,
+            instructor_name: s.instructor_name,
+            instructor_phone: s.instructor_phone,
+          };
+        }),
+      };
+    })
+  );
 }

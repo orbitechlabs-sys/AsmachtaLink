@@ -1,9 +1,12 @@
 import { listCertifications, getCertificationBattalions } from "@/lib/db/repositories/certifications";
 import { listTrainings, getTrainingBattalions } from "@/lib/db/repositories/trainings";
 import { listBattalions } from "@/lib/db/repositories/battalions";
-import { certificationColor } from "@/lib/utils/cert-colors";
 import { CalendarClient } from "@/components/calendar/calendar-client";
-import { certificationToCalendarItem, type CalendarItem } from "@/components/calendar/types";
+import {
+  certificationToCalendarItem,
+  trainingToCalendarItem,
+  type CalendarItem,
+} from "@/components/calendar/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,19 +24,7 @@ export default async function CalendarPage() {
   );
 
   const trainingItems: CalendarItem[] = await Promise.all(
-    trainings.map(async (t) => ({
-      kind: "training" as const,
-      id: t.id,
-      key: `training-${t.id}`,
-      name: t.name,
-      start_date: t.start_date,
-      end_date: t.end_date,
-      location: null,
-      href: `/trainings/${t.id}`,
-      color: t.color_hex || certificationColor(t.domain || t.name),
-      battalions: await getTrainingBattalions(t.id),
-      registration_open: 0,
-    }))
+    trainings.map(async (t) => trainingToCalendarItem(t, await getTrainingBattalions(t.id)))
   );
 
   const items = [...certItems, ...trainingItems];

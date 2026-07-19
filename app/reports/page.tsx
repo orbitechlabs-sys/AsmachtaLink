@@ -1,173 +1,56 @@
+import { addDays, format } from "date-fns";
+import { getCertificationBattalions, listCertifications } from "@/lib/db/repositories/certifications";
+import { getTrainingBattalions, listTrainings } from "@/lib/db/repositories/trainings";
+import { getExportData, getTrainingExportData } from "@/lib/db/repositories/export";
 import {
-  certificationsByMonth,
-  completedCertifications,
-  gapsByBattalion,
-  openForRegistration,
-  openRequestsByBattalion,
-  rosterCounts,
-} from "@/lib/db/repositories/reports";
-import { ExportExcelButton } from "@/components/reports/export-excel-button";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { CalendarRange } from "lucide-react";
+  certificationToCalendarItem,
+  trainingToCalendarItem,
+  type CalendarItem,
+} from "@/components/calendar/types";
+import { DateRangePicker } from "@/components/reports/date-range-picker";
+import { ExportReportBody } from "@/components/reports/export-report-body";
 
 export const dynamic = "force-dynamic";
 
-function ReportSection({
-  title,
-  data,
-  filename,
-  render,
+export default async function ReportsPage({
+  searchParams,
 }: {
-  title: string;
-  data: Record<string, unknown>[];
-  filename: string;
-  render: (row: Record<string, unknown>) => React.ReactNode;
+  searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  return (
-    <section className="space-y-2 border rounded-md p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
-        <ExportExcelButton data={data} filename={filename} />
-      </div>
-      <div className="space-y-1 text-sm">
-        {data.map((row, i) => (
-          <div key={i} className="flex justify-between border-b py-1 last:border-0">
-            {render(row)}
-          </div>
-        ))}
-        {data.length === 0 && <p className="text-muted-foreground">אין נתונים.</p>}
-      </div>
-    </section>
-  );
-}
+  const { from: fromParam, to: toParam } = await searchParams;
+  const today = new Date();
+  const from = fromParam ?? format(addDays(today, -7), "yyyy-MM-dd");
+  const to = toParam ?? format(addDays(today, 7), "yyyy-MM-dd");
 
-export default async function ReportsPage() {
-  const byMonth = (await certificationsByMonth()) as { month: string; count: number }[];
-  const open = (await openForRegistration()) as {
-    id: number;
-    name: string;
-    location: string | null;
-    start_date: string;
-  }[];
-  const completed = (await completedCertifications()) as {
-    id: number;
-    name: string;
-    location: string | null;
-    start_date: string;
-  }[];
-  const requestsByBattalion = (await openRequestsByBattalion()) as {
-    battalion_name: string;
-    count: number;
-  }[];
-  const gaps = (await gapsByBattalion()) as {
-    battalion_name: string;
-    total_requested: number;
-    fulfilled: number;
-  }[];
-  const counts = (await rosterCounts()) as {
-    id: number;
-    name: string;
-    location: string | null;
-    registered_count: number;
-  }[];
+  const [certs, trainings] = await Promise.all([
+    getExportData(from, to).then((rows) =>
+      rows.sort((a, b) => a.start_date.localeCompare(b.start_date))
+    ),
+    getTrainingExportData(from, to),
+  ]);
+
+  const [certGanttItems, trainingGanttItems] = await Promise.all([
+    listCertifications({ from, to })
+      .then((rows) => rows.filter((c) => c.status !== "cancelled"))
+      .then((rows) =>
+        Promise.all(
+          rows.map(async (c) =>
+            certificationToCalendarItem({ ...c, battalions: await getCertificationBattalions(c.id) })
+          )
+        )
+      ),
+    listTrainings({ from, to }).then((rows) =>
+      Promise.all(rows.map(async (t) => trainingToCalendarItem(t, await getTrainingBattalions(t.id))))
+    ),
+  ]);
+
+  const ganttItems: CalendarItem[] = [...certGanttItems, ...trainingGanttItems];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">דוחות</h1>
-        <Button asChild>
-          <Link href="/reports/export">
-            <CalendarRange className="size-4" />
-            ייצוא סיכום לפי טווח תאריכים
-          </Link>
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ReportSection
-          title="הסמכות לפי חודש"
-          data={byMonth}
-          filename="certifications_by_month"
-          render={(r) => (
-            <>
-              <span>{r.month as string}</span>
-              <span>{r.count as number}</span>
-            </>
-          )}
-        />
-        <ReportSection
-          title="הסמכות פתוחות להרשמה"
-          data={open}
-          filename="open_for_registration"
-          render={(r) => (
-            <>
-              <span>
-                {r.name as string}
-                {r.location ? (
-                  <span className="text-muted-foreground text-xs"> · {r.location as string}</span>
-                ) : null}
-              </span>
-              <span>{r.start_date as string}</span>
-            </>
-          )}
-        />
-        <ReportSection
-          title="הסמכות שבוצעו"
-          data={completed}
-          filename="completed_certifications"
-          render={(r) => (
-            <>
-              <span>
-                {r.name as string}
-                {r.location ? (
-                  <span className="text-muted-foreground text-xs"> · {r.location as string}</span>
-                ) : null}
-              </span>
-              <span>{r.start_date as string}</span>
-            </>
-          )}
-        />
-        <ReportSection
-          title="דרישות פתוחות לפי גדוד"
-          data={requestsByBattalion}
-          filename="open_requests_by_battalion"
-          render={(r) => (
-            <>
-              <span>{r.battalion_name as string}</span>
-              <span>{r.count as number}</span>
-            </>
-          )}
-        />
-        <ReportSection
-          title="פערי הסמכה לפי גדוד"
-          data={gaps}
-          filename="gaps_by_battalion"
-          render={(r) => (
-            <>
-              <span>{r.battalion_name as string}</span>
-              <span>
-                {r.fulfilled as number} / {r.total_requested as number}
-              </span>
-            </>
-          )}
-        />
-        <ReportSection
-          title="כמות חיילים רשומים לכל הסמכה"
-          data={counts}
-          filename="roster_counts"
-          render={(r) => (
-            <>
-              <span>
-                {r.name as string}
-                {r.location ? (
-                  <span className="text-muted-foreground text-xs"> · {r.location as string}</span>
-                ) : null}
-              </span>
-              <span>{r.registered_count as number}</span>
-            </>
-          )}
-        />
-      </div>
+    <div className="space-y-4 max-w-5xl">
+      <h1 className="text-2xl font-bold">סיכום לפי טווח תאריכים</h1>
+      <DateRangePicker from={from} to={to} />
+      <ExportReportBody certs={certs} trainings={trainings} ganttItems={ganttItems} from={from} to={to} />
     </div>
   );
 }

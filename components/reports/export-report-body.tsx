@@ -3,65 +3,74 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
+import { GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GanttView } from "@/components/calendar/gantt-view";
 import { SlotStatusIndicator } from "@/components/certifications/slot-status-indicator";
-import { CertificationStatusBadge } from "@/components/certifications/status-badge";
 import { ExportReportActions, EXPORT_REPORT_CONTENT_ID } from "@/components/reports/export-report-actions";
-import {
-  CERTIFICATION_STATUS_LABELS,
-  ROSTER_STATUS_LABELS,
-  type RosterStatus,
-} from "@/lib/types";
-import type { ExportCertification } from "@/lib/db/repositories/export";
+import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
+import type { ExportCertification, ExportTraining } from "@/lib/db/repositories/export";
 import type { CalendarItem } from "@/components/calendar/types";
 
 function hebrewDate(iso: string) {
   return format(new Date(iso), "EEEE, d/M/yyyy", { locale: he });
 }
 
-const GOOD_ROSTER_STATUSES = new Set<RosterStatus>([
-  "registered",
-  "pending_approval",
-  "approved",
-  "participated",
-  "passed",
-]);
+function certKey(id: number) {
+  return `certification-${id}`;
+}
+
+function trainKey(id: number) {
+  return `training-${id}`;
+}
 
 export function ExportReportBody({
   certs,
-  ganttCerts,
+  trainings,
+  ganttItems,
   from,
   to,
 }: {
   certs: ExportCertification[];
-  ganttCerts: CalendarItem[];
+  trainings: ExportTraining[];
+  ganttItems: CalendarItem[];
   from: string;
   to: string;
 }) {
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set(certs.map((c) => c.id)));
+  const totalCount = certs.length + trainings.length;
 
-  function toggle(id: number) {
-    setSelectedIds((prev) => {
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    () => new Set([...certs.map((c) => certKey(c.id)), ...trainings.map((t) => trainKey(t.id))])
+  );
+
+  function toggle(key: string) {
+    setSelectedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
   function selectAll() {
-    setSelectedIds(new Set(certs.map((c) => c.id)));
+    setSelectedKeys(new Set([...certs.map((c) => certKey(c.id)), ...trainings.map((t) => trainKey(t.id))]));
   }
 
   function clearAll() {
-    setSelectedIds(new Set());
+    setSelectedKeys(new Set());
   }
 
-  const selectedCerts = useMemo(() => certs.filter((c) => selectedIds.has(c.id)), [certs, selectedIds]);
-  const selectedGanttCerts = useMemo(
-    () => ganttCerts.filter((c) => selectedIds.has(c.id)),
-    [ganttCerts, selectedIds]
+  const selectedCerts = useMemo(
+    () => certs.filter((c) => selectedKeys.has(certKey(c.id))),
+    [certs, selectedKeys]
+  );
+  const selectedTrainings = useMemo(
+    () => trainings.filter((t) => selectedKeys.has(trainKey(t.id))),
+    [trainings, selectedKeys]
+  );
+  const selectedGanttItems = useMemo(
+    () => ganttItems.filter((i) => selectedKeys.has(i.key)),
+    [ganttItems, selectedKeys]
   );
 
   const registrationGaps = selectedCerts.filter(
@@ -71,11 +80,16 @@ export function ExportReportBody({
     c.taxes.filter((t) => !t.is_fulfilled).map((t) => ({ cert: c, tax: t }))
   );
 
-  const byDay = new Map<string, typeof selectedCerts>();
-  for (const c of selectedCerts) {
-    if (!byDay.has(c.start_date)) byDay.set(c.start_date, []);
-    byDay.get(c.start_date)!.push(c);
-  }
+  const byDay = useMemo(() => {
+    const map = new Map<string, { certs: ExportCertification[]; trainings: ExportTraining[] }>();
+    const bucket = (day: string) => {
+      if (!map.has(day)) map.set(day, { certs: [], trainings: [] });
+      return map.get(day)!;
+    };
+    for (const c of selectedCerts) bucket(c.start_date).certs.push(c);
+    for (const t of selectedTrainings) bucket(t.start_date).trainings.push(t);
+    return map;
+  }, [selectedCerts, selectedTrainings]);
   const days = Array.from(byDay.keys()).sort();
 
   return (
@@ -83,7 +97,7 @@ export function ExportReportBody({
       <div className="no-print rounded-lg border p-3 space-y-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-semibold text-sm">
-            בחירת הסמכות לייצוא ({selectedIds.size}/{certs.length})
+            בחירת פריטים לייצוא ({selectedKeys.size}/{totalCount})
           </h3>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={selectAll}>
@@ -96,12 +110,12 @@ export function ExportReportBody({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 max-h-60 overflow-y-auto">
           {certs.map((cert) => (
-            <label key={cert.id} className="flex items-start gap-2 text-sm cursor-pointer">
+            <label key={certKey(cert.id)} className="flex items-start gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 className="mt-1"
-                checked={selectedIds.has(cert.id)}
-                onChange={() => toggle(cert.id)}
+                checked={selectedKeys.has(certKey(cert.id))}
+                onChange={() => toggle(certKey(cert.id))}
               />
               <span>
                 {cert.name}
@@ -113,31 +127,48 @@ export function ExportReportBody({
               </span>
             </label>
           ))}
+          {trainings.map((training) => (
+            <label key={trainKey(training.id)} className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={selectedKeys.has(trainKey(training.id))}
+                onChange={() => toggle(trainKey(training.id))}
+              />
+              <span className="flex items-start gap-1">
+                <GraduationCap className="size-3.5 mt-0.5 shrink-0 text-muted-foreground" aria-label="הדרכה" />
+                <span>
+                  {training.name}
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {hebrewDate(training.start_date)}
+                    {training.domain ? ` · ${training.domain}` : ""}
+                  </span>
+                </span>
+              </span>
+            </label>
+          ))}
         </div>
       </div>
 
-      <ExportReportActions certs={selectedCerts} from={from} to={to} />
+      <ExportReportActions certs={selectedCerts} trainings={selectedTrainings} from={from} to={to} />
 
       <div id={EXPORT_REPORT_CONTENT_ID} className="space-y-6 bg-background p-2">
         <div data-pdf-atomic className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brigade-logo.png" alt="חטיבה 228" className="size-12" />
           <div>
-            <h1 className="text-2xl font-bold">סיכום הסמכות</h1>
+            <h1 className="text-2xl font-bold">סיכום הסמכות והדרכות</h1>
             <p className="text-muted-foreground">
               {hebrewDate(from)} — {hebrewDate(to)}
             </p>
           </div>
         </div>
 
-        {selectedGanttCerts.length > 0 && (
+        {selectedGanttItems.length > 0 && (
           <div data-pdf-atomic className="space-y-2 break-inside-avoid">
             <h2 className="font-bold">תצוגת גאנט</h2>
-            <GanttView
-              items={selectedGanttCerts}
-              rangeStart={new Date(from)}
-              rangeEnd={new Date(to)}
-            />
+            <GanttView items={selectedGanttItems} rangeStart={new Date(from)} rangeEnd={new Date(to)} />
           </div>
         )}
 
@@ -163,7 +194,7 @@ export function ExportReportBody({
 
         {days.length === 0 && (
           <p data-pdf-atomic className="text-muted-foreground">
-            {certs.length === 0 ? "אין הסמכות בטווח התאריכים שנבחר." : "לא נבחרו הסמכות לייצוא."}
+            {totalCount === 0 ? "אין הסמכות או הדרכות בטווח התאריכים שנבחר." : "לא נבחרו פריטים לייצוא."}
           </p>
         )}
 
@@ -177,7 +208,7 @@ export function ExportReportBody({
             >
               {hebrewDate(day)}
             </h2>
-            {byDay.get(day)!.map((cert) => (
+            {byDay.get(day)!.certs.map((cert) => (
               <div key={cert.id} data-pdf-atomic className="rounded-md border p-3 space-y-2">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -277,6 +308,66 @@ export function ExportReportBody({
                 )}
               </div>
             ))}
+
+            {byDay.get(day)!.trainings.map((training) => {
+              const sessionsByBattalion = new Map<string, typeof training.sessions>();
+              for (const s of training.sessions) {
+                if (!sessionsByBattalion.has(s.battalion_name)) sessionsByBattalion.set(s.battalion_name, []);
+                sessionsByBattalion.get(s.battalion_name)!.push(s);
+              }
+              return (
+                <div
+                  key={`training-${training.id}`}
+                  data-pdf-atomic
+                  className="rounded-md border p-3 space-y-2"
+                  style={{ borderInlineStartWidth: 4, borderInlineStartColor: training.color }}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <GraduationCap className="size-4 shrink-0 text-muted-foreground" aria-label="הדרכה" />
+                      <span className="font-bold">{training.name}</span>
+                      {training.end_date && training.end_date !== training.start_date && (
+                        <span className="text-muted-foreground text-sm">
+                          {" "}
+                          (עד {hebrewDate(training.end_date)})
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs rounded-full bg-muted px-2 py-0.5">הדרכה</span>
+                  </div>
+
+                  {training.domain && (
+                    <p className="text-xs text-muted-foreground">תחום: {training.domain}</p>
+                  )}
+
+                  {training.sessions.length === 0 && (
+                    <p className="text-sm text-amber-700">טרם נקבעו מפגשים.</p>
+                  )}
+
+                  {Array.from(sessionsByBattalion.entries()).map(([battalionName, sessions]) => (
+                    <div
+                      key={battalionName}
+                      className="ps-3 border-e-2"
+                      style={{ borderInlineEndColor: sessions[0]?.battalion_color }}
+                    >
+                      <p className="font-semibold text-sm" style={{ color: sessions[0]?.battalion_color }}>
+                        {battalionName}
+                      </p>
+                      <ul className="text-sm list-disc ms-5">
+                        {sessions.map((s, i) => (
+                          <li key={i}>
+                            {hebrewDate(s.session_date)} · <span dir="ltr">{s.start_time}–{s.end_time}</span>
+                            {s.location ? ` · ${s.location}` : ""}
+                            {s.instructor_name ? ` · ${s.instructor_name}` : ""}
+                            {s.instructor_phone ? ` · ${s.instructor_phone}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
