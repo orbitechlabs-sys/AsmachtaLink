@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const {
     register,
@@ -45,8 +43,10 @@ export function LoginForm() {
     }
 
     toast.success("התחברת בהצלחה");
-    router.push("/");
-    router.refresh();
+    // Hard navigation so the server sees the freshly-set session cookie on the
+    // first request (a soft router.push races the cookie write and can bounce
+    // back to /login).
+    window.location.assign("/");
   }
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function SignupForm() {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const {
@@ -49,8 +47,8 @@ export function SignupForm() {
     // If email confirmation is disabled, a session is returned immediately.
     if (data.session) {
       toast.success("נרשמת בהצלחה");
-      router.push("/");
-      router.refresh();
+      // Hard navigation so the server sees the new session cookie immediately.
+      window.location.assign("/");
       return;
     }
 

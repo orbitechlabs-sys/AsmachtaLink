@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function UpdatePasswordForm() {
-  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const {
     register,
@@ -43,8 +41,8 @@ export function UpdatePasswordForm() {
     }
 
     toast.success("הסיסמה עודכנה בהצלחה");
-    router.push("/");
-    router.refresh();
+    // Hard navigation so the server sees the updated session cookie immediately.
+    window.location.assign("/");
   }
 
   return (
