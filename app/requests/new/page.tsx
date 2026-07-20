@@ -1,11 +1,14 @@
+import { redirect } from "next/navigation";
 import { listBattalions, getBattalionByCode } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { battalionCodeOf, isBrigade } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { battalionCodeOf, canEdit, isBrigade } from "@/lib/auth/permissions";
 import { RequestForm } from "@/components/requests/request-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewRequestPage() {
+  if (!canEdit(await getCurrentUser())) redirect("/requests");
   const role = await getCurrentRole();
   const allBattalions = await listBattalions();
   const battalions = isBrigade(role)

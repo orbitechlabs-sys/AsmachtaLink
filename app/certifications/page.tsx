@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { listCertifications } from "@/lib/db/repositories/certifications";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canEdit } from "@/lib/auth/permissions";
 import { CertificationStatusBadge } from "@/components/certifications/status-badge";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
@@ -16,18 +18,21 @@ import { Plus } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function CertificationsPage() {
-  const certifications = await listCertifications();
+  const [certifications, me] = await Promise.all([listCertifications(), getCurrentUser()]);
+  const canEditData = canEdit(me);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">הסמכות</h1>
-        <Button asChild>
-          <Link href="/certifications/new">
-            <Plus className="size-4" />
-            הסמכה חדשה
-          </Link>
-        </Button>
+        {canEditData && (
+          <Button asChild>
+            <Link href="/certifications/new">
+              <Plus className="size-4" />
+              הסמכה חדשה
+            </Link>
+          </Button>
+        )}
       </div>
 
       <div className="border rounded-md overflow-x-auto">

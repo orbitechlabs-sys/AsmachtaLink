@@ -103,6 +103,39 @@ export type EntityType = "certification" | "battalion_request" | "roster_entry";
 
 export type Role = "brigade" | `battalion:${string}`;
 
+// --- Real per-user authorization (Supabase auth id -> app role/status) ---
+
+export type UserRole = "super_admin" | "editor" | "viewer";
+
+export const USER_ROLES: UserRole[] = ["super_admin", "editor", "viewer"];
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  super_admin: "מנהל על",
+  editor: "עורך",
+  viewer: "צפייה בלבד",
+};
+
+export type UserStatus = "pending" | "approved" | "rejected";
+
+export const USER_STATUSES: UserStatus[] = ["pending", "approved", "rejected"];
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  pending: "ממתין לאישור",
+  approved: "מאושר",
+  rejected: "נדחה",
+};
+
+export interface AppUser {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  status: UserStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
 export interface Battalion {
   id: number;
   code: string;
@@ -267,7 +300,8 @@ export type NotificationType =
   | "soldier_approved"
   | "soldier_rejected"
   | "certification_cancelled"
-  | "certification_changed";
+  | "certification_changed"
+  | "user_registered";
 
 export interface Notification {
   id: number;

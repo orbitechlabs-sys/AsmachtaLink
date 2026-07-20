@@ -21,7 +21,7 @@ export function SignupForm() {
     formState: { errors },
   } = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "" },
+    defaultValues: { full_name: "", email: "", password: "", confirmPassword: "" },
   });
 
   async function onSubmit(values: SignupFormValues) {
@@ -32,6 +32,7 @@ export function SignupForm() {
       password: values.password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: { full_name: values.full_name },
       },
     });
     setSubmitting(false);
@@ -73,6 +74,14 @@ export function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="full_name">שם מלא</Label>
+        <Input id="full_name" autoComplete="name" {...register("full_name")} />
+        {errors.full_name && (
+          <p className="text-xs text-destructive">{errors.full_name.message}</p>
+        )}
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="email">אימייל</Label>
         <Input

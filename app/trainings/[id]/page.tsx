@@ -4,7 +4,8 @@ import { format } from "date-fns";
 import { getTrainingById, listSessionsForTraining } from "@/lib/db/repositories/trainings";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { canManageTrainings } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canManageTrainings, canEdit } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { SessionCard } from "@/components/trainings/session-card";
@@ -22,12 +23,13 @@ export default async function TrainingDetailPage({
   const training = await getTrainingById(Number(id));
   if (!training) notFound();
 
-  const [sessions, battalions, role] = await Promise.all([
+  const [sessions, battalions, role, me] = await Promise.all([
     listSessionsForTraining(training.id),
     listBattalions(),
     getCurrentRole(),
+    getCurrentUser(),
   ]);
-  const canManage = canManageTrainings(role);
+  const canManage = canManageTrainings(role) && canEdit(me);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
 
   // Group sessions by day, preserving date order (repo already orders by date/time).

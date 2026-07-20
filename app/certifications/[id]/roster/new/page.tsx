@@ -1,6 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCertificationById, listPrerequisites } from "@/lib/db/repositories/certifications";
 import { listBattalions } from "@/lib/db/repositories/battalions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canEdit } from "@/lib/auth/permissions";
 import { RosterForm } from "@/components/roster/roster-form";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +16,7 @@ export default async function NewRosterEntryPage({
 }) {
   const { id } = await params;
   const { reserve } = await searchParams;
+  if (!canEdit(await getCurrentUser())) redirect(`/certifications/${id}`);
   const cert = await getCertificationById(Number(id));
   if (!cert) notFound();
   const [battalions, prerequisites] = await Promise.all([listBattalions(), listPrerequisites(cert.id)]);

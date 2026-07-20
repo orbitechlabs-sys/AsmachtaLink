@@ -7,6 +7,8 @@ import { Menu, X } from "lucide-react";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAuthRoute } from "@/lib/auth/routes";
+import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { isSuperAdmin } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -19,12 +21,17 @@ const LINKS = [
   { href: "/reports", label: "דוחות" },
 ];
 
+const ADMIN_LINK = { href: "/admin/permissions", label: "ניהול הרשאות" };
+
 export function MainNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { user } = useCurrentUser();
 
   // Auth pages render a clean centered card with no app chrome.
   if (isAuthRoute(pathname)) return null;
+
+  const links = isSuperAdmin(user) ? [...LINKS, ADMIN_LINK] : LINKS;
 
   return (
     <header className="bg-card relative border-b-2 border-primary/20">
@@ -35,7 +42,7 @@ export function MainNav() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 flex-1">
-          {LINKS.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -65,7 +72,7 @@ export function MainNav() {
 
       {open && (
         <div className="md:hidden border-t p-3 flex flex-col gap-1">
-          {LINKS.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}

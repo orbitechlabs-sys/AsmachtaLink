@@ -11,6 +11,7 @@ export type LoginFormValues = z.infer<typeof loginSchema>;
 
 export const signupSchema = z
   .object({
+    full_name: z.string().min(2, "יש להזין שם מלא"),
     email,
     password: z.string().min(8, "הסיסמה חייבת להכיל לפחות 8 תווים"),
     confirmPassword: z.string().min(1, "יש לאשר את הסיסמה"),

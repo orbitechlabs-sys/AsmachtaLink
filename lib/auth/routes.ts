@@ -5,6 +5,7 @@ export const AUTH_ROUTES = [
   "/signup",
   "/reset-password",
   "/update-password",
+  "/pending",
 ] as const;
 
 /** True for any auth page (used to suppress the app header/chrome). */

@@ -9,7 +9,8 @@ import {
 import { listReserveForCertification, listRosterForCertification } from "@/lib/db/repositories/roster";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { canManageCertifications } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canManageCertifications, canEdit } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { RosterTable } from "@/components/roster/roster-table";
@@ -31,7 +32,7 @@ export default async function CertificationDetailPage({
   const cert = await getCertificationById(Number(id));
   if (!cert) notFound();
 
-  const [prerequisites, quotas, taxes, roster, reserve, battalions, role] = await Promise.all([
+  const [prerequisites, quotas, taxes, roster, reserve, battalions, role, me] = await Promise.all([
     listPrerequisites(cert.id),
     listQuotas(cert.id),
     listTaxes(cert.id),
@@ -39,8 +40,10 @@ export default async function CertificationDetailPage({
     listReserveForCertification(cert.id),
     listBattalions(),
     getCurrentRole(),
+    getCurrentUser(),
   ]);
-  const canManage = canManageCertifications(role);
+  const canManage = canManageCertifications(role) && canEdit(me);
+  const canEditData = canEdit(me);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
 
   const today = new Date().toISOString().slice(0, 10);
@@ -132,12 +135,14 @@ export default async function CertificationDetailPage({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">רשימת חיילים</h2>
-          <Button size="sm" asChild>
-            <Link href={`/certifications/${cert.id}/roster/new`}>
-              <Plus className="size-4" />
-              הוסף חייל
-            </Link>
-          </Button>
+          {canEditData && (
+            <Button size="sm" asChild>
+              <Link href={`/certifications/${cert.id}/roster/new`}>
+                <Plus className="size-4" />
+                הוסף חייל
+              </Link>
+            </Button>
+          )}
         </div>
         <RosterTable
           certificationId={cert.id}
@@ -150,12 +155,14 @@ export default async function CertificationDetailPage({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-amber-700">עתודה</h2>
-          <Button size="sm" variant="outline" className="border-amber-300 text-amber-700" asChild>
-            <Link href={`/certifications/${cert.id}/roster/new?reserve=1`}>
-              <Plus className="size-4" />
-              הוסף לעתודה
-            </Link>
-          </Button>
+          {canEditData && (
+            <Button size="sm" variant="outline" className="border-amber-300 text-amber-700" asChild>
+              <Link href={`/certifications/${cert.id}/roster/new?reserve=1`}>
+                <Plus className="size-4" />
+                הוסף לעתודה
+              </Link>
+            </Button>
+          )}
         </div>
         {reserve.length > 0 ? (
           <RosterTable

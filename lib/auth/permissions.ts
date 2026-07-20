@@ -1,4 +1,34 @@
-import type { Role } from "@/lib/types";
+import type { AppUser, Role } from "@/lib/types";
+
+// --- Real per-user authorization (privilege axis: super_admin/editor/viewer) ---
+// These operate on the authenticated AppUser (from lib/auth/user.ts) and are the
+// authoritative gate. They are orthogonal to the organizational role below
+// (brigade / battalion:CODE), which remains a view-scope selector.
+
+/** Any approved user may read the app. */
+export function canView(user: AppUser | null): boolean {
+  return !!user && user.status === "approved";
+}
+
+/** Super-admins and editors (approved) may create/update/delete app data. */
+export function canEdit(user: AppUser | null): boolean {
+  return (
+    !!user &&
+    user.status === "approved" &&
+    (user.role === "super_admin" || user.role === "editor")
+  );
+}
+
+/** Only super-admins may manage users (approve, change roles, delete). */
+export function canManageUsers(user: AppUser | null): boolean {
+  return !!user && user.status === "approved" && user.role === "super_admin";
+}
+
+export function isSuperAdmin(user: AppUser | null): boolean {
+  return canManageUsers(user);
+}
+
+// --- Organizational scope (unchanged): brigade vs battalion:CODE ---
 
 export function isBrigade(role: Role): boolean {
   return role === "brigade";

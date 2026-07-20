@@ -1,14 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
+import { getUserById } from "@/lib/db/repositories/users";
 
 /** Routes reachable without an authenticated session. */
 const PUBLIC_ROUTES = [
-  "/login",
-  "/signup",
-  "/reset-password",
-  "/update-password",
-  "/auth",
+  "/login", "/signup", "/reset-password", "/update-password", "/auth",
 ];
+
+/** API paths any authenticated user may call (identity + own notifications + view switch). */
+const API_ALLOW_ANY = ["/api/me", "/api/role", "/api/notifications"];
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function forbidden() {
+  return NextResponse.json({ error: "forbidden" }, { status: 403 });
+}
 
 export async function proxy(request: NextRequest) {
   // Always refresh the session so tokens stay valid across requests.
@@ -20,22 +26,76 @@ export async function proxy(request: NextRequest) {
   );
 
   // Unauthenticated users are redirected to /login for any protected route.
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+  if (!user) {
+    if (!isPublic) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    return response;
   }
 
-  // Return the response carrying refreshed-session cookies.
+  // Authenticated: gate on approval status + role. Best-effort — the
+  // authoritative checks also live in the admin page guard and admin handlers,
+  // so a DB hiccup here never hard-fails the whole app.
+  try {
+    const appUser = await getUserById(user.id);
+    const status = appUser?.status ?? "pending";
+    const role = appUser?.role ?? "viewer";
+    const approved = status === "approved";
+    const canEditData = approved && (role === "super_admin" || role === "editor");
+
+    const isApi = pathname.startsWith("/api");
+
+    if (isApi) {
+      const allowAny = API_ALLOW_ANY.some(
+        (p) => pathname === p || pathname.startsWith(`${p}/`)
+      );
+      // Pending/rejected users get no API access (except identity/self endpoints).
+      if (!approved && !allowAny) return forbidden();
+
+      // Admin API is super-admin only.
+      if (pathname.startsWith("/api/admin")) {
+        if (role !== "super_admin") return forbidden();
+      } else if (WRITE_METHODS.has(request.method) && !allowAny) {
+        // Viewers are read-only across all domain write endpoints.
+        if (!canEditData) return forbidden();
+      }
+      return response;
+    }
+
+    // Page routes.
+    const onPending = pathname === "/pending" || pathname.startsWith("/pending/");
+    if (!approved) {
+      if (!onPending && !isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/pending";
+        return NextResponse.redirect(url);
+      }
+    } else {
+      if (onPending) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+      if (
+        (pathname === "/admin" || pathname.startsWith("/admin/")) &&
+        role !== "super_admin"
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+    }
+  } catch {
+    // Best-effort gate; fall through and let page/handler guards enforce.
+  }
+
   return response;
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except static assets and image files, so the
-     * session cookie is refreshed everywhere else (including /api).
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { listTrainings } from "@/lib/db/repositories/trainings";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { canManageTrainings } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canManageTrainings, canEdit } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { TrainingsListTabs } from "@/components/trainings/trainings-list-tabs";
 import { Plus } from "lucide-react";
@@ -9,8 +10,12 @@ import { Plus } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function TrainingsPage() {
-  const [trainings, role] = await Promise.all([listTrainings(), getCurrentRole()]);
-  const canManage = canManageTrainings(role);
+  const [trainings, role, me] = await Promise.all([
+    listTrainings(),
+    getCurrentRole(),
+    getCurrentUser(),
+  ]);
+  const canManage = canManageTrainings(role) && canEdit(me);
 
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = trainings.filter((t) => (t.end_date || t.start_date) >= today);

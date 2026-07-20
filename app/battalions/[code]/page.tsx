@@ -6,7 +6,8 @@ import { listRequests } from "@/lib/db/repositories/requests";
 import { getCertificationById } from "@/lib/db/repositories/certifications";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { canManageCertifications } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canManageCertifications, canEdit as canEditUser } from "@/lib/auth/permissions";
 import { RosterStatusBadge, RequestStatusBadge } from "@/components/certifications/status-badge";
 import { BattalionGapsBadges } from "@/components/requests/battalion-gaps-badges";
 
@@ -28,7 +29,8 @@ export default async function BattalionDetailPage({
     (await Promise.all(roster.map(async (entry) => [entry.certification_id, await getCertificationById(entry.certification_id)] as const)))
   );
   const role = await getCurrentRole();
-  const canEdit = canManageCertifications(role);
+  const me = await getCurrentUser();
+  const canEdit = canManageCertifications(role) && canEditUser(me);
 
   return (
     <div className="space-y-6">

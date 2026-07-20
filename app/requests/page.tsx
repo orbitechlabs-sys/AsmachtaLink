@@ -3,7 +3,8 @@ import { listRequests } from "@/lib/db/repositories/requests";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { battalionCodeOf, canManageCertifications, isBrigade } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { battalionCodeOf, canManageCertifications, canEdit, isBrigade } from "@/lib/auth/permissions";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { CertificationGapsTable } from "@/components/requests/certification-gaps-table";
 import { RequestsExportActions, REQUESTS_PAGE_CONTENT_ID } from "@/components/requests/requests-export-actions";
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
 
 export default async function RequestsPage() {
   const role = await getCurrentRole();
+  const me = await getCurrentUser();
+  const canEditData = canEdit(me);
   const battalionCode = isBrigade(role) ? undefined : battalionCodeOf(role) ?? undefined;
   const requests = await listRequests({ battalionCode });
   const battalions = await listBattalions();
@@ -42,18 +45,20 @@ export default async function RequestsPage() {
           <CertificationGapsTable
             rows={gapRows}
             battalions={gapBattalions}
-            canEdit={canManageCertifications(role)}
+            canEdit={canManageCertifications(role) && canEditData}
           />
         </div>
 
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">דרישות גדודים</h2>
-          <Button asChild className="no-print">
-            <Link href="/requests/new">
-              <Plus className="size-4" />
-              דרישה חדשה
-            </Link>
-          </Button>
+          {canEditData && (
+            <Button asChild className="no-print">
+              <Link href="/requests/new">
+                <Plus className="size-4" />
+                דרישה חדשה
+              </Link>
+            </Button>
+          )}
         </div>
         <div className="space-y-2">
           {requests.map((r) => (

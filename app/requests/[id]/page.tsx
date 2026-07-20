@@ -3,7 +3,8 @@ import { getRequest } from "@/lib/db/repositories/requests";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
 import { listCertifications } from "@/lib/db/repositories/certifications";
 import { getCurrentRole } from "@/lib/auth/current-role";
-import { canApproveRequests } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canApproveRequests, canEdit } from "@/lib/auth/permissions";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { RequestActionsPanel } from "@/components/requests/request-actions-panel";
 import { StatusHistoryTimeline } from "@/components/audit/status-history-timeline";
@@ -23,6 +24,7 @@ export default async function RequestDetailPage({
 
   const battalion = await getBattalionById(request.battalion_id);
   const role = await getCurrentRole();
+  const me = await getCurrentUser();
   const openCerts = await listCertifications({ status: "open" });
 
   return (
@@ -62,7 +64,7 @@ export default async function RequestDetailPage({
         </p>
       )}
 
-      {canApproveRequests(role) && (
+      {canApproveRequests(role) && canEdit(me) && (
         <RequestActionsPanel request={request} openCertifications={openCerts} />
       )}
 
