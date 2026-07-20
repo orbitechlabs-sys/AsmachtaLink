@@ -7,6 +7,7 @@ import { GraduationCap } from "lucide-react";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
 import type { CalendarItem } from "@/components/calendar/types";
 import { getWeekNumber, getHebrewWeekdayShort } from "@/lib/utils/dates";
+import { compareCalendarItems } from "@/components/calendar/types";
 import { cn } from "@/lib/utils";
 
 const DAY_MIN_WIDTH = 40;
@@ -105,7 +106,7 @@ export function GanttView({
             ))}
           </div>
         </div>
-        {items.map((item) => {
+        {[...items].sort(compareCalendarItems).map((item) => {
           const itemStart = new Date(item.start_date);
           const itemEnd = new Date(item.end_date ?? item.start_date);
           const isTrueStart = itemStart >= rangeStart;

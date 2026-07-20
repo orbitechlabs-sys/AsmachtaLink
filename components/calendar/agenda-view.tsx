@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { CertificationChipDetailed } from "@/components/calendar/certification-chip";
-import type { CalendarItem } from "@/components/calendar/types";
+import { calendarSortPriority, type CalendarItem } from "@/components/calendar/types";
 
 export function AgendaView({ items }: { items: CalendarItem[] }) {
   const sorted = [...items].sort((a, b) => a.start_date.localeCompare(b.start_date));
@@ -26,9 +26,11 @@ export function AgendaView({ items }: { items: CalendarItem[] }) {
             {format(new Date(date), "EEEE, d MMMM yyyy")}
           </h3>
           <div className="space-y-2">
-            {dayItems.map((item) => (
-              <CertificationChipDetailed key={item.key} item={item} />
-            ))}
+            {[...dayItems]
+              .sort((a, b) => calendarSortPriority(a.kind) - calendarSortPriority(b.kind))
+              .map((item) => (
+                <CertificationChipDetailed key={item.key} item={item} />
+              ))}
           </div>
         </div>
       ))}

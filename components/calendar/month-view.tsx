@@ -20,7 +20,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronLeft, GraduationCap } from "lucide-react";
 import { CertificationChip } from "@/components/calendar/certification-chip";
-import type { CalendarItem } from "@/components/calendar/types";
+import {
+  calendarSortPriority,
+  compareCalendarItems,
+  type CalendarItem,
+} from "@/components/calendar/types";
 import { getWeekNumber } from "@/lib/utils/dates";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +47,8 @@ function chunkIntoWeeks(days: Date[]): Date[][] {
 /** Assigns each multi-day item a stable vertical "lane" for its whole span, so it
  * doesn't jump between rows as it crosses week boundaries. */
 function assignLanes(multiDayItems: CalendarItem[]): Map<string, number> {
-  const sorted = [...multiDayItems].sort((a, b) => a.start_date.localeCompare(b.start_date));
+  // Influencing factors first so they always claim the top lanes, then by date.
+  const sorted = [...multiDayItems].sort(compareCalendarItems);
   const laneEnds: string[] = [];
   const laneOf = new Map<string, number>();
   for (const item of sorted) {
@@ -72,7 +77,9 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
   const laneOf = useMemo(() => assignLanes(multiDayItems), [multiDayItems]);
 
   function singleDayItemsOnDay(day: Date) {
-    return singleDayItems.filter((c) => isSameDay(day, new Date(c.start_date)));
+    return singleDayItems
+      .filter((c) => isSameDay(day, new Date(c.start_date)))
+      .sort((a, b) => calendarSortPriority(a.kind) - calendarSortPriority(b.kind));
   }
 
   return (

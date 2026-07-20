@@ -9,6 +9,19 @@ import { certificationColor } from "@/lib/utils/cert-colors";
 /** Influencing factors are always this fixed gray — never the per-course color. */
 export const INFLUENCING_FACTOR_COLOR = "#6b7280";
 
+/** Sort priority for calendar bars: influencing factors first (top), then the rest.
+ * Lower sorts earlier / higher on screen. */
+export function calendarSortPriority(kind: CalendarItemKind): number {
+  return kind === "influencing_factor" ? 0 : 1;
+}
+
+/** Comparator that pins influencing factors to the top, then orders by start date. */
+export function compareCalendarItems(a: CalendarItem, b: CalendarItem): number {
+  const p = calendarSortPriority(a.kind) - calendarSortPriority(b.kind);
+  if (p !== 0) return p;
+  return a.start_date.localeCompare(b.start_date);
+}
+
 export type CalendarBattalionRef = {
   code: string;
   name: string;

@@ -39,7 +39,13 @@ interface ItemSpan {
 }
 
 function assignLanes(spans: ItemSpan[]): Map<string, number> {
-  const sorted = [...spans].sort((a, b) => a.start.getTime() - b.start.getTime());
+  // Influencing factors first so they always occupy the top lanes, then by start.
+  const sorted = [...spans].sort((a, b) => {
+    const pa = a.item.kind === "influencing_factor" ? 0 : 1;
+    const pb = b.item.kind === "influencing_factor" ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return a.start.getTime() - b.start.getTime();
+  });
   const laneEnds: number[] = [];
   const laneOf = new Map<string, number>();
   for (const span of sorted) {
