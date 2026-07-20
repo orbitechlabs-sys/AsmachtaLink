@@ -5,17 +5,25 @@ import { GraduationCap } from "lucide-react";
 import { CertificationStatusBadge } from "@/components/certifications/status-badge";
 import type { CalendarItem } from "@/components/calendar/types";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
+import { cn } from "@/lib/utils";
+
+/** Dashed outline marking training-sourced events. `outline` (not `border`) so it
+ * never changes the bar's box size/alignment; inset offset keeps it inside the
+ * rounded bar and visible against the fill color. */
+const TRAINING_OUTLINE = "outline outline-2 outline-dashed outline-white/70 -outline-offset-2";
 
 export function CertificationChip({ item }: { item: CalendarItem }) {
-  const primaryColor = item.battalions[0]?.color_hex;
+  const isTraining = item.kind === "training";
   return (
     <Link
       href={item.href}
-      className="block rounded bg-card px-1.5 py-0.5 text-xs hover:shadow-md transition-shadow overflow-hidden border-e-4"
-      style={{
-        borderInlineEndColor: item.color ?? primaryColor ?? "var(--muted-foreground)",
-        backgroundColor: item.color ? `${item.color}14` : undefined,
-      }}
+      className={cn(
+        "block rounded px-1.5 py-1 text-white overflow-hidden shadow-sm hover:shadow-md transition-shadow",
+        isTraining && TRAINING_OUTLINE
+      )}
+      // Single-day events use the exact same color source as multi-day bars.
+      style={{ backgroundColor: item.color || "var(--muted-foreground)" }}
+      title={`${item.name}${item.location ? " · " + item.location : ""}`}
     >
       <div className="flex items-center gap-1">
         <div className="flex -space-x-0.5 shrink-0">
@@ -23,37 +31,41 @@ export function CertificationChip({ item }: { item: CalendarItem }) {
             item.battalions.slice(0, 3).map((b) => (
               <span
                 key={b.code}
-                className="size-2 rounded-full border border-white"
+                className="size-2 rounded-full border border-white/80"
                 style={battalionBarStyle(b.color_hex)}
                 title={b.name}
               />
             ))
           ) : (
-            <span className="size-2 rounded-full bg-muted-foreground/40" title="כלל החטיבה" />
+            <span className="size-2 rounded-full bg-white/50" title="כלל החטיבה" />
           )}
         </div>
-        {item.kind === "training" && (
-          <GraduationCap className="size-3 shrink-0 text-muted-foreground" aria-label="הדרכה" />
+        {isTraining && (
+          <GraduationCap className="size-3 shrink-0" aria-label="הדרכה" />
         )}
-        <span className="truncate font-medium">{item.name}</span>
+        <span className="truncate text-[13px] font-semibold leading-tight">{item.name}</span>
       </div>
       {item.location && (
-        <div className="truncate text-[10px] text-muted-foreground leading-tight">{item.location}</div>
+        <div className="truncate text-[11px] opacity-90 leading-tight">{item.location}</div>
       )}
     </Link>
   );
 }
 
 export function CertificationChipDetailed({ item }: { item: CalendarItem }) {
+  const isTraining = item.kind === "training";
   return (
     <Link
       href={item.href}
-      className="block rounded-md border bg-card p-2 hover:shadow-md transition-shadow border-e-4"
+      className={cn(
+        "block rounded-md border bg-card p-2 hover:shadow-md transition-shadow border-e-4",
+        isTraining && "border-dashed"
+      )}
       style={{ borderInlineEndColor: item.color ?? "var(--border)" }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium text-sm truncate flex items-center gap-1">
-          {item.kind === "training" && (
+          {isTraining && (
             <GraduationCap className="size-3.5 shrink-0 text-muted-foreground" aria-label="הדרכה" />
           )}
           {item.name}
@@ -61,7 +73,7 @@ export function CertificationChipDetailed({ item }: { item: CalendarItem }) {
         {item.kind === "certification" && item.status ? (
           <CertificationStatusBadge status={item.status} />
         ) : (
-          <span className="text-[10px] text-muted-foreground shrink-0">הדרכה</span>
+          <span className="text-[11px] text-muted-foreground shrink-0">הדרכה</span>
         )}
       </div>
       <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-2">

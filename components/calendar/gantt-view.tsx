@@ -148,9 +148,11 @@ export function GanttView({
                 <Link
                   href={item.href}
                   className={cn(
-                    "absolute top-1.5 h-7 flex items-center gap-1 px-2 text-[10px] text-white overflow-hidden",
+                    "absolute top-1.5 h-7 flex items-center gap-1 px-2 text-white overflow-hidden",
                     isTrueStart ? "rounded-s-md" : "rounded-s-none",
-                    isTrueEnd ? "rounded-e-md" : "rounded-e-none"
+                    isTrueEnd ? "rounded-e-md" : "rounded-e-none",
+                    item.kind === "training" &&
+                      "outline outline-2 outline-dashed outline-white/70 -outline-offset-2"
                   )}
                   style={{
                     right: `${rightPct}%`,
@@ -164,10 +166,10 @@ export function GanttView({
                   {item.kind === "training" && (
                     <GraduationCap className="size-3 shrink-0" aria-label="הדרכה" />
                   )}
-                  <span className="truncate">
+                  <span className="truncate text-[13px] leading-tight">
                     <span className="font-bold">{item.name}</span>
                     {item.location && (
-                      <span className="text-[10px] font-normal opacity-80"> - {item.location}</span>
+                      <span className="text-[11px] font-normal opacity-80"> - {item.location}</span>
                     )}
                   </span>
                 </Link>

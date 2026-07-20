@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["א'", "ב'", "ג'", "ד'", "ה'", "ו'", "שבת"];
 const DAY_NUMBER_HEIGHT = 20;
-const LANE_HEIGHT = 20;
+const LANE_HEIGHT = 26;
 
 function isMultiDay(item: CalendarItem): boolean {
   return Boolean(item.end_date) && item.end_date !== item.start_date;
@@ -162,9 +162,11 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
                         key={item.key}
                         href={item.href}
                         className={cn(
-                          "pointer-events-auto text-white text-[10px] px-1 truncate flex items-center gap-1 overflow-hidden shadow-sm",
+                          "pointer-events-auto text-white px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
-                          isTrueEnd ? "rounded-e-sm" : "rounded-e-none"
+                          isTrueEnd ? "rounded-e-sm" : "rounded-e-none",
+                          item.kind === "training" &&
+                            "outline outline-2 outline-dashed outline-white/70 -outline-offset-2"
                         )}
                         style={{
                           gridColumnStart: startCol + 1,
@@ -186,10 +188,10 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
                             style={{ backgroundColor: b.color_hex }}
                           />
                         ))}
-                        <span className="truncate">
+                        <span className="truncate text-[13px] leading-tight">
                           <span className="font-bold">{item.name}</span>
                           {item.location && (
-                            <span className="text-[9px] font-normal opacity-80"> - {item.location}</span>
+                            <span className="text-[11px] font-normal opacity-80"> - {item.location}</span>
                           )}
                         </span>
                       </Link>

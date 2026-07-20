@@ -175,9 +175,11 @@ export function YearGanttView({ items }: { items: CalendarItem[] }) {
                         key={item.key}
                         href={item.href}
                         className={cn(
-                          "text-white text-[9px] px-1 truncate flex items-center gap-0.5 overflow-hidden shadow-sm",
+                          "text-white text-[10px] px-1 truncate flex items-center gap-0.5 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
-                          isTrueEnd ? "rounded-e-sm" : "rounded-e-none"
+                          isTrueEnd ? "rounded-e-sm" : "rounded-e-none",
+                          item.kind === "training" &&
+                            "outline outline-1 outline-dashed outline-white/80 -outline-offset-1"
                         )}
                         style={{
                           gridColumnStart: startCol + 1,

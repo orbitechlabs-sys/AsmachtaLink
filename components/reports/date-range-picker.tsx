@@ -31,7 +31,7 @@ export function DateRangePicker({ from, to }: { from: string; to: string }) {
     <div className="no-print flex flex-wrap items-end gap-3 rounded-lg border p-3">
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => previousRange(7)}>
-          שבוע קודם
+          שבוע קדימה
         </Button>
         <Button variant="outline" size="sm" onClick={() => previousRange(14)}>
           שבועיים קודם
