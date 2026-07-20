@@ -24,7 +24,7 @@ function TrainingsTable({ trainings }: { trainings: TrainingWithCounts[] }) {
             <TableHead>תחום</TableHead>
             <TableHead>תאריך</TableHead>
             <TableHead>איש קשר</TableHead>
-            <TableHead>יחידות</TableHead>
+            <TableHead>כמות הלו״זים</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

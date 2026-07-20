@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { SessionCard } from "@/components/trainings/session-card";
 import { getWeekNumber, getHebrewDayRangeLabel, getHebrewWeekdayShort } from "@/lib/utils/dates";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -60,12 +60,6 @@ export default async function TrainingDetailPage({
               <Link href={`/trainings/${training.id}/edit`}>
                 <Pencil className="size-4" />
                 עריכה
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href="/trainings/new">
-                <Plus className="size-4" />
-                הוספת הדרכה
               </Link>
             </Button>
           </div>

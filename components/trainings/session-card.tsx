@@ -149,40 +149,43 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
 
   return (
     <div
-      className="rounded-lg p-3 shadow-sm text-white relative"
+      className="rounded-lg p-3 shadow-sm text-white"
       style={{ backgroundColor: color }}
     >
-      {canManage && (
-        <div className="absolute top-2 end-2 flex gap-1">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            aria-label="עריכה"
-            className="p-1 rounded hover:bg-white/20"
-          >
-            <Pencil className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={remove}
-            aria-label="מחיקה"
-            className="p-1 rounded hover:bg-white/20"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
-        </div>
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <div className="font-semibold text-sm">
-          גדוד {battalion?.code ?? "?"}
-          {session.instructor_name ? ` · ${session.instructor_name}` : ""}
-        </div>
+      {/* Action row: time on the right (start), edit/delete grouped on the left
+          (end). A normal flex row with space-between — no absolute positioning,
+          so the time and icons can never overlap regardless of width. */}
+      <div className="flex items-center justify-between gap-2">
         <span
           className="shrink-0 rounded bg-white/20 px-1.5 py-0.5 text-xs font-medium"
           dir="ltr"
         >
           {session.start_time}–{session.end_time}
         </span>
+        {canManage && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="עריכה"
+              className="p-1 rounded hover:bg-white/20"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={remove}
+              aria-label="מחיקה"
+              className="p-1 rounded hover:bg-white/20"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="font-semibold text-sm mt-1">
+        גדוד {battalion?.code ?? "?"}
+        {session.instructor_name ? ` · ${session.instructor_name}` : ""}
       </div>
       {session.location && <div className="text-sm mt-1">{session.location}</div>}
       {session.instructor_phone && (
