@@ -1,19 +1,25 @@
 import { listCertifications, getCertificationBattalions } from "@/lib/db/repositories/certifications";
 import { listTrainings, getTrainingBattalions } from "@/lib/db/repositories/trainings";
+import {
+  listInfluencingFactors,
+  getInfluencingFactorBattalions,
+} from "@/lib/db/repositories/influencing-factors";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { CalendarClient } from "@/components/calendar/calendar-client";
 import {
   certificationToCalendarItem,
   trainingToCalendarItem,
+  influencingFactorToCalendarItem,
   type CalendarItem,
 } from "@/components/calendar/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function CalendarPage() {
-  const [certifications, trainings, battalions] = await Promise.all([
+  const [certifications, trainings, influencingFactors, battalions] = await Promise.all([
     listCertifications().then((rows) => rows.filter((c) => c.status !== "cancelled")),
     listTrainings(),
+    listInfluencingFactors(),
     listBattalions(),
   ]);
 
@@ -27,7 +33,13 @@ export default async function CalendarPage() {
     trainings.map(async (t) => trainingToCalendarItem(t, await getTrainingBattalions(t.id)))
   );
 
-  const items = [...certItems, ...trainingItems];
+  const factorItems: CalendarItem[] = await Promise.all(
+    influencingFactors.map(async (f) =>
+      influencingFactorToCalendarItem(f, await getInfluencingFactorBattalions(f.id))
+    )
+  );
+
+  const items = [...certItems, ...trainingItems, ...factorItems];
 
   return (
     <div className="space-y-4">

@@ -73,7 +73,9 @@ export function CertificationChipDetailed({ item }: { item: CalendarItem }) {
         {item.kind === "certification" && item.status ? (
           <CertificationStatusBadge status={item.status} />
         ) : (
-          <span className="text-[11px] text-muted-foreground shrink-0">הדרכה</span>
+          <span className="text-[11px] text-muted-foreground shrink-0">
+            {item.kind === "influencing_factor" ? "גורם משפיע" : "הדרכה"}
+          </span>
         )}
       </div>
       <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-2">

@@ -1,5 +1,13 @@
-import type { CertificationStatus, CertificationWithCounts, Training } from "@/lib/types";
+import type {
+  CertificationStatus,
+  CertificationWithCounts,
+  InfluencingFactor,
+  Training,
+} from "@/lib/types";
 import { certificationColor } from "@/lib/utils/cert-colors";
+
+/** Influencing factors are always this fixed gray — never the per-course color. */
+export const INFLUENCING_FACTOR_COLOR = "#6b7280";
 
 export type CalendarBattalionRef = {
   code: string;
@@ -7,7 +15,7 @@ export type CalendarBattalionRef = {
   color_hex: string;
 };
 
-export type CalendarItemKind = "certification" | "training";
+export type CalendarItemKind = "certification" | "training" | "influencing_factor";
 
 /** A single time-bound entity rendered on the calendar. Certifications and trainings
  * are both projected into this unified shape so every view renders a color-coded
@@ -74,6 +82,28 @@ export function trainingToCalendarItem(
     location: null,
     href: `/trainings/${training.id}`,
     color: training.color_hex || certificationColor(training.domain || training.name),
+    battalions,
+    registration_open: 0,
+  };
+}
+
+/** Projects an influencing factor into a CalendarItem. Always gray — it does NOT
+ * use the per-course color system (no color_hex field, no fallback palette), and
+ * single-day factors get the same gray as multi-day ones. */
+export function influencingFactorToCalendarItem(
+  factor: InfluencingFactor,
+  battalions: CalendarBattalionRef[]
+): CalendarItem {
+  return {
+    kind: "influencing_factor",
+    id: factor.id,
+    key: `influencing_factor-${factor.id}`,
+    name: factor.name,
+    start_date: factor.start_date,
+    end_date: factor.end_date,
+    location: null,
+    href: `/influencing-factors/${factor.id}`,
+    color: INFLUENCING_FACTOR_COLOR,
     battalions,
     registration_open: 0,
   };

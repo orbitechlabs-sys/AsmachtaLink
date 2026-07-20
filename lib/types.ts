@@ -291,6 +291,16 @@ export interface TrainingSession {
   updated_at: string;
 }
 
+export interface InfluencingFactor {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type NotificationType =
   | "certification_opened"
   | "opened_from_request"
