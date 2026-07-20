@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimeCombobox, timeToMinutes } from "@/components/ui/time-combobox";
 import type { Battalion, TrainingSession } from "@/lib/types";
 
 interface Props {
@@ -33,6 +34,16 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
   const color = battalion?.color_hex ?? "#64748B";
 
   async function save() {
+    const start = timeToMinutes(form.start_time);
+    const end = timeToMinutes(form.end_time);
+    if (start == null || end == null) {
+      toast.error("שעה לא תקינה — יש להזין בפורמט HH:MM");
+      return;
+    }
+    if (end <= start) {
+      toast.error("שעת הסיום חייבת להיות מאוחרת משעת ההתחלה");
+      return;
+    }
     setSaving(true);
     const res = await fetch(`/api/trainings/${trainingId}/sessions/${session.id}`, {
       method: "PATCH",
@@ -90,18 +101,17 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
           </div>
           <div className="space-y-1">
             <Label className="text-xs">שעת התחלה</Label>
-            <Input
-              type="time"
+            <TimeCombobox
               value={form.start_time}
-              onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
+              onChange={(v) => setForm((f) => ({ ...f, start_time: v }))}
             />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">שעת סיום</Label>
-            <Input
-              type="time"
+            <TimeCombobox
               value={form.end_time}
-              onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
+              referenceTime={form.start_time}
+              onChange={(v) => setForm((f) => ({ ...f, end_time: v }))}
             />
           </div>
           <div className="space-y-1 col-span-2">

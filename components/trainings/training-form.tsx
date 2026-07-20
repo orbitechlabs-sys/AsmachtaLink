@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ColorSelect } from "@/components/ui/color-select";
+import { TimeCombobox, timeToMinutes } from "@/components/ui/time-combobox";
 import { Plus, Trash2 } from "lucide-react";
 import { getHebrewWeekdayShort } from "@/lib/utils/dates";
 import type { Battalion, TrainingSession } from "@/lib/types";
@@ -124,17 +125,33 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
   async function onSubmit(values: TrainingFormValues) {
     // Only keep blocks whose day is still within the selected range.
     const daySet = new Set(days);
-    const sessions = blocks
-      .filter((b) => daySet.has(b.session_date) && b.battalion_id !== "" && b.start_time && b.end_time)
-      .map((b) => ({
-        battalion_id: Number(b.battalion_id),
-        session_date: b.session_date,
-        start_time: b.start_time,
-        end_time: b.end_time,
-        location: b.location || null,
-        instructor_name: b.instructor_name || null,
-        instructor_phone: b.instructor_phone || null,
-      }));
+    const keptBlocks = blocks.filter(
+      (b) => daySet.has(b.session_date) && b.battalion_id !== "" && b.start_time && b.end_time
+    );
+
+    // Validate times: valid HH:mm and end strictly after start.
+    for (const b of keptBlocks) {
+      const start = timeToMinutes(b.start_time);
+      const end = timeToMinutes(b.end_time);
+      if (start == null || end == null) {
+        toast.error("שעה לא תקינה — יש להזין בפורמט HH:MM");
+        return;
+      }
+      if (end <= start) {
+        toast.error("שעת הסיום חייבת להיות מאוחרת משעת ההתחלה");
+        return;
+      }
+    }
+
+    const sessions = keptBlocks.map((b) => ({
+      battalion_id: Number(b.battalion_id),
+      session_date: b.session_date,
+      start_time: b.start_time,
+      end_time: b.end_time,
+      location: b.location || null,
+      instructor_name: b.instructor_name || null,
+      instructor_phone: b.instructor_phone || null,
+    }));
 
     setSubmitting(true);
     const payload = { ...values, sessions };
@@ -259,18 +276,28 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">שעת התחלה</Label>
-                      <Input
-                        type="time"
+                      <TimeCombobox
                         value={b.start_time}
-                        onChange={(e) => updateBlock(b.key, { start_time: e.target.value })}
+                        onChange={(v) => {
+                          // Convenience: default end to start + 1h when empty.
+                          const start = timeToMinutes(v);
+                          const patch: Partial<SessionBlock> = { start_time: v };
+                          if (start != null && !b.end_time) {
+                            const end = (start + 60) % (24 * 60);
+                            patch.end_time = `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(
+                              end % 60
+                            ).padStart(2, "0")}`;
+                          }
+                          updateBlock(b.key, patch);
+                        }}
                       />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">שעת סיום</Label>
-                      <Input
-                        type="time"
+                      <TimeCombobox
                         value={b.end_time}
-                        onChange={(e) => updateBlock(b.key, { end_time: e.target.value })}
+                        referenceTime={b.start_time}
+                        onChange={(v) => updateBlock(b.key, { end_time: v })}
                       />
                     </div>
                     <div className="space-y-1 col-span-2">
