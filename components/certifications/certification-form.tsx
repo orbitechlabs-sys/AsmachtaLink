@@ -6,7 +6,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import type { z } from "zod";
-import { certificationSchema, type CertificationFormValues } from "@/lib/validation/certification";
+import {
+  certificationSchema,
+  certificationCreateSchema,
+  type CertificationFormValues,
+} from "@/lib/validation/certification";
 
 type CertificationInputValues = z.input<typeof certificationSchema>;
 import { Button } from "@/components/ui/button";
@@ -61,7 +65,7 @@ export function CertificationForm({
     watch,
     formState: { errors },
   } = useForm<CertificationInputValues, unknown, CertificationFormValues>({
-    resolver: zodResolver(certificationSchema),
+    resolver: zodResolver(certificationCreateSchema),
     defaultValues: {
       name: "",
       domain: "",
@@ -69,6 +73,7 @@ export function CertificationForm({
       end_date: "",
       location: "",
       total_slots: undefined,
+      is_unlimited: false,
       registration_open: false,
       notes: "",
       color_hex: "",
@@ -77,6 +82,8 @@ export function CertificationForm({
       ...defaultValues,
     },
   });
+
+  const isUnlimited = Boolean(watch("is_unlimited"));
 
   function applyTemplate(templateId: number) {
     const tpl = templates.find((t) => t.id === templateId);
@@ -188,8 +195,35 @@ export function CertificationForm({
           <Input type="date" {...register("end_date")} />
         </div>
         <div className="space-y-1.5">
-          <Label>מספר מקומות</Label>
-          <Input type="number" min={1} {...register("total_slots")} />
+          <Label className="flex items-center justify-between gap-2">
+            <span>מספר מקומות</span>
+            <label className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground cursor-pointer">
+              <Checkbox
+                id="is_unlimited"
+                checked={isUnlimited}
+                onCheckedChange={(v) => {
+                  const checked = Boolean(v);
+                  setValue("is_unlimited", checked);
+                  if (checked) setValue("total_slots", undefined);
+                }}
+              />
+              אין מגבלה
+            </label>
+          </Label>
+          <Input
+            type="number"
+            min={1}
+            disabled={isUnlimited}
+            className={isUnlimited ? "opacity-50" : undefined}
+            {...register("total_slots")}
+          />
+          {isUnlimited ? (
+            <p className="text-xs text-muted-foreground">ללא הגבלת מספר מקומות</p>
+          ) : (
+            errors.total_slots && (
+              <p className="text-xs text-destructive">{errors.total_slots.message}</p>
+            )
+          )}
         </div>
         <div className="flex items-center gap-2 pt-6">
           <Checkbox

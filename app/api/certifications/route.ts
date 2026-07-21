@@ -6,7 +6,7 @@ import {
   replaceQuotas,
   replaceTaxes,
 } from "@/lib/db/repositories/certifications";
-import { certificationSchema } from "@/lib/validation/certification";
+import { certificationCreateSchema } from "@/lib/validation/certification";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { canManageCertifications } from "@/lib/auth/permissions";
 import type { CertificationStatus } from "@/lib/types";
@@ -29,12 +29,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const body = await request.json();
-  const parsed = certificationSchema.safeParse(body);
+  const parsed = certificationCreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { prerequisites, quotas, taxes, ...certInput } = parsed.data;
-  const id = await createCertification({ ...certInput, created_by_role: role });
+  // is_unlimited is UI-only: unlimited is persisted as total_slots = null.
+  const { prerequisites, quotas, taxes, is_unlimited, ...certInput } = parsed.data;
+  const id = await createCertification({
+    ...certInput,
+    total_slots: is_unlimited ? null : certInput.total_slots ?? null,
+    created_by_role: role,
+  });
   if (prerequisites.length) await replacePrerequisites(id, prerequisites);
   if (quotas.length) await replaceQuotas(id, quotas);
   if (taxes.length) await replaceTaxes(id, taxes);

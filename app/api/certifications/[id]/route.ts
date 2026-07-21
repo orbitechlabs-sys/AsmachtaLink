@@ -10,7 +10,7 @@ import {
   replaceTaxes,
   updateCertification,
 } from "@/lib/db/repositories/certifications";
-import { certificationSchema } from "@/lib/validation/certification";
+import { certificationPatchSchema } from "@/lib/validation/certification";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { canManageCertifications } from "@/lib/auth/permissions";
 
@@ -39,11 +39,15 @@ export async function PATCH(
   }
   const { id } = await params;
   const body = await request.json();
-  const parsed = certificationSchema.partial().safeParse(body);
+  const parsed = certificationPatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { prerequisites, quotas, taxes, ...certInput } = parsed.data;
+  const { prerequisites, quotas, taxes, is_unlimited, ...certInput } = parsed.data;
+  // Normalize capacity only when is_unlimited was actually sent (partial update).
+  if (is_unlimited !== undefined) {
+    certInput.total_slots = is_unlimited ? null : certInput.total_slots ?? null;
+  }
   await updateCertification(Number(id), certInput);
   if (prerequisites) await replacePrerequisites(Number(id), prerequisites);
   if (quotas) await replaceQuotas(Number(id), quotas);

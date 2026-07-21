@@ -140,7 +140,8 @@ export async function updateCertification(id: number, input: Partial<Certificati
     input.start_date ?? existing.start_date,
     input.end_date !== undefined ? input.end_date || null : existing.end_date,
     input.location ?? existing.location,
-    input.total_slots ?? existing.total_slots,
+    // `undefined` = field not sent (keep existing); `null` = explicit "unlimited".
+    input.total_slots !== undefined ? input.total_slots : existing.total_slots,
     input.gap_row_id !== undefined ? input.gap_row_id : existing.gap_row_id,
     input.registration_open !== undefined ? (input.registration_open ? 1 : 0) : existing.registration_open,
     input.notes ?? existing.notes,
