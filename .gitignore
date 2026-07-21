@@ -54,3 +54,8 @@ Thumbs.db
 # temp / scripts
 _tmp/
 *.tmp
+
+# one-time SQLite->Postgres migration artifacts (local rollback safety net, not source)
+backups/
+# external source SQLite dump consumed by scripts/migrate-from-sqlite.ts
+DbToUpdate/
