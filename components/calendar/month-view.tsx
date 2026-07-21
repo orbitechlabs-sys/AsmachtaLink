@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronLeft, GraduationCap } from "lucide-react";
 import { CertificationChip } from "@/components/calendar/certification-chip";
 import {
-  calendarSortPriority,
   compareCalendarItems,
   type CalendarItem,
 } from "@/components/calendar/types";
@@ -36,6 +35,19 @@ function isMultiDay(item: CalendarItem): boolean {
   return Boolean(item.end_date) && item.end_date !== item.start_date;
 }
 
+/** The effective end date for lane/bar math (single-day items end on their start). */
+function itemEndDate(item: CalendarItem): string {
+  return item.end_date ?? item.start_date;
+}
+
+/** Items rendered in the pinned top "bar" layer: every multi-day item, PLUS
+ * single-day influencing factors — so influencing factors always sit at the very
+ * top of the day, above certification/training bars and single-day chips, whether
+ * they span multiple days or just one. */
+function isBanner(item: CalendarItem): boolean {
+  return isMultiDay(item) || item.kind === "influencing_factor";
+}
+
 function chunkIntoWeeks(days: Date[]): Date[][] {
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) {
@@ -44,20 +56,21 @@ function chunkIntoWeeks(days: Date[]): Date[][] {
   return weeks;
 }
 
-/** Assigns each multi-day item a stable vertical "lane" for its whole span, so it
+/** Assigns each bar-layer item a stable vertical "lane" for its whole span, so it
  * doesn't jump between rows as it crosses week boundaries. */
-function assignLanes(multiDayItems: CalendarItem[]): Map<string, number> {
+function assignLanes(barItems: CalendarItem[]): Map<string, number> {
   // Influencing factors first so they always claim the top lanes, then by date.
-  const sorted = [...multiDayItems].sort(compareCalendarItems);
+  const sorted = [...barItems].sort(compareCalendarItems);
   const laneEnds: string[] = [];
   const laneOf = new Map<string, number>();
   for (const item of sorted) {
-    let lane = laneEnds.findIndex((end) => end < item.start_date);
+    const end = itemEndDate(item);
+    let lane = laneEnds.findIndex((laneEnd) => laneEnd < item.start_date);
     if (lane === -1) {
       lane = laneEnds.length;
-      laneEnds.push(item.end_date!);
+      laneEnds.push(end);
     } else {
-      laneEnds[lane] = item.end_date!;
+      laneEnds[lane] = end;
     }
     laneOf.set(item.key, lane);
   }
@@ -72,14 +85,15 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
   const days = eachDayOfInterval({ start, end });
   const weeks = chunkIntoWeeks(days);
 
-  const multiDayItems = useMemo(() => items.filter(isMultiDay), [items]);
-  const singleDayItems = useMemo(() => items.filter((c) => !isMultiDay(c)), [items]);
-  const laneOf = useMemo(() => assignLanes(multiDayItems), [multiDayItems]);
+  // Bar layer = multi-day items + single-day influencing factors (pinned to the top).
+  const barItems = useMemo(() => items.filter(isBanner), [items]);
+  const singleDayItems = useMemo(() => items.filter((c) => !isBanner(c)), [items]);
+  const laneOf = useMemo(() => assignLanes(barItems), [barItems]);
 
   function singleDayItemsOnDay(day: Date) {
     return singleDayItems
       .filter((c) => isSameDay(day, new Date(c.start_date)))
-      .sort((a, b) => calendarSortPriority(a.kind) - calendarSortPriority(b.kind));
+      .sort(compareCalendarItems);
   }
 
   return (
@@ -104,10 +118,10 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
           const weekStart = week[0];
           const weekEnd = week[6];
 
-          const weekBars = multiDayItems
+          const weekBars = barItems
             .map((item) => {
               const itemStart = new Date(item.start_date);
-              const itemEnd = new Date(item.end_date!);
+              const itemEnd = new Date(itemEndDate(item));
               if (itemEnd < weekStart || itemStart > weekEnd) return null;
               const clippedStart = maxDate([itemStart, weekStart]);
               const clippedEnd = minDate([itemEnd, weekEnd]);
@@ -183,7 +197,9 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
                           height: LANE_HEIGHT - 3,
                           backgroundColor: item.color,
                         }}
-                        title={`${item.name}${item.location ? " · " + item.location : ""} (${item.start_date} – ${item.end_date})`}
+                        title={`${item.name}${item.location ? " · " + item.location : ""} (${item.start_date}${
+                          isMultiDay(item) ? " – " + item.end_date : ""
+                        })`}
                       >
                         {item.kind === "training" && (
                           <GraduationCap className="size-2.5 shrink-0" aria-label="הדרכה" />

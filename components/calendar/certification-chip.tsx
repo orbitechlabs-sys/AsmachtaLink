@@ -43,11 +43,16 @@ export function CertificationChip({ item }: { item: CalendarItem }) {
         {isTraining && (
           <GraduationCap className="size-3 shrink-0" aria-label="הדרכה" />
         )}
-        <span className="truncate text-[13px] font-semibold leading-tight">{item.name}</span>
+        {/* Name + unit on a single line: the unit is smaller/lighter inline, and the
+            whole line truncates with an ellipsis instead of wrapping onto a 2nd row.
+            Matches the inline layout of the multi-day spanning bars. */}
+        <span className="truncate min-w-0 text-[13px] leading-tight">
+          <span className="font-semibold">{item.name}</span>
+          {item.location && (
+            <span className="text-[11px] font-normal opacity-80"> - {item.location}</span>
+          )}
+        </span>
       </div>
-      {item.location && (
-        <div className="truncate text-[11px] opacity-90 leading-tight">{item.location}</div>
-      )}
     </Link>
   );
 }
