@@ -58,6 +58,7 @@ export default async function EditCertificationPage({
           end_date: cert.end_date ?? "",
           location: cert.location ?? "",
           total_slots: cert.total_slots ?? undefined,
+          is_unlimited: cert.total_slots === null,
           gap_row_id: cert.gap_row_id ?? undefined,
           registration_open: cert.registration_open === 1,
           notes: cert.notes ?? "",
