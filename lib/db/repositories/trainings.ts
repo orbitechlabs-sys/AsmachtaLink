@@ -27,6 +27,7 @@ export interface TrainingSessionInput {
   location?: string | null;
   instructor_name?: string | null;
   instructor_phone?: string | null;
+  notes?: string | null;
 }
 
 export async function listTrainings(filters: TrainingFilters = {}): Promise<TrainingWithCounts[]> {
@@ -151,8 +152,8 @@ async function insertSession(
 ) {
   await execute(
     `INSERT INTO training_sessions
-        (training_id, battalion_id, session_date, start_time, end_time, location, instructor_name, instructor_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (training_id, battalion_id, session_date, start_time, end_time, location, instructor_name, instructor_phone, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       trainingId,
       s.battalion_id,
@@ -162,6 +163,7 @@ async function insertSession(
       s.location ?? null,
       s.instructor_name ?? null,
       s.instructor_phone ?? null,
+      s.notes ?? null,
     ],
     client
   );
@@ -193,8 +195,8 @@ export async function updateSession(sessionId: number, input: Partial<TrainingSe
   await execute(
     `UPDATE training_sessions SET
       battalion_id = $1, session_date = $2, start_time = $3, end_time = $4,
-      location = $5, instructor_name = $6, instructor_phone = $7, updated_at = NOW()
-     WHERE id = $8`,
+      location = $5, instructor_name = $6, instructor_phone = $7, notes = $8, updated_at = NOW()
+     WHERE id = $9`,
     [
       input.battalion_id ?? existing.battalion_id,
       input.session_date ?? existing.session_date,
@@ -203,6 +205,7 @@ export async function updateSession(sessionId: number, input: Partial<TrainingSe
       input.location !== undefined ? input.location : existing.location,
       input.instructor_name !== undefined ? input.instructor_name : existing.instructor_name,
       input.instructor_phone !== undefined ? input.instructor_phone : existing.instructor_phone,
+      input.notes !== undefined ? input.notes : existing.notes,
       sessionId,
     ]
   );

@@ -10,6 +10,7 @@ export const trainingSessionSchema = z.object({
   location: z.string().nullish(),
   instructor_name: z.string().nullish(),
   instructor_phone: z.string().nullish(),
+  notes: z.string().nullish(),
 });
 
 export const trainingSchema = z.object({

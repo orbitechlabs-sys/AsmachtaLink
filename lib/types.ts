@@ -287,6 +287,7 @@ export interface TrainingSession {
   location: string | null;
   instructor_name: string | null;
   instructor_phone: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }

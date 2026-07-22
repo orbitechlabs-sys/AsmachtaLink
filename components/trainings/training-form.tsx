@@ -29,6 +29,7 @@ interface SessionBlock {
   location: string;
   instructor_name: string;
   instructor_phone: string;
+  notes: string;
 }
 
 interface Props {
@@ -58,6 +59,7 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
       location: s.location ?? "",
       instructor_name: s.instructor_name ?? "",
       instructor_phone: s.instructor_phone ?? "",
+      notes: s.notes ?? "",
     }))
   );
 
@@ -110,6 +112,7 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
         location: "",
         instructor_name: "",
         instructor_phone: "",
+        notes: "",
       },
     ]);
   }
@@ -151,6 +154,7 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
       location: b.location || null,
       instructor_name: b.instructor_name || null,
       instructor_phone: b.instructor_phone || null,
+      notes: b.notes || null,
     }));
 
     setSubmitting(true);
@@ -319,6 +323,14 @@ export function TrainingForm({ battalions, palette, trainingId, defaultValues, d
                       <Input
                         value={b.instructor_phone}
                         onChange={(e) => updateBlock(b.key, { instructor_phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">הערות</Label>
+                      <Textarea
+                        value={b.notes}
+                        onChange={(e) => updateBlock(b.key, { notes: e.target.value })}
+                        rows={3}
                       />
                     </div>
                   </div>
