@@ -29,7 +29,14 @@ export default async function RootLayout({
 
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      {/* suppressHydrationWarning: browser extensions (e.g. Testim) inject
+          attributes like data-testim-* onto <body> before React hydrates,
+          which would otherwise trip a hydration mismatch. This only suppresses
+          warnings for <body>'s own attributes, not its children. */}
+      <body
+        suppressHydrationWarning
+        className="min-h-full flex flex-col bg-background text-foreground"
+      >
         {/* Make all Radix primitives (Tabs, DropdownMenu, …) inherit RTL.
             Without this they default to dir="ltr", which flips e.g. table
             column order inside <Tabs>. */}
