@@ -159,14 +159,9 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
                       >
                         <div className="text-xs">{format(day, "d")}</div>
                         <div className="space-y-0.5" style={{ marginTop: laneCount * LANE_HEIGHT }}>
-                          {dayItems.slice(0, 3).map((c) => (
+                          {dayItems.map((c) => (
                             <CertificationChip key={c.key} item={c} />
                           ))}
-                          {dayItems.length > 3 && (
-                            <div className="text-[10px] text-muted-foreground">
-                              +{dayItems.length - 3} נוספות
-                            </div>
-                          )}
                         </div>
                       </div>
                     );
