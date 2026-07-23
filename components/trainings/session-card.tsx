@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { TimeCombobox, timeToMinutes } from "@/components/ui/time-combobox";
 import type { Battalion, TrainingSession } from "@/lib/types";
 
@@ -29,6 +30,7 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
     location: session.location ?? "",
     instructor_name: session.instructor_name ?? "",
     instructor_phone: session.instructor_phone ?? "",
+    notes: session.notes ?? "",
   });
 
   const color = battalion?.color_hex ?? "#64748B";
@@ -135,6 +137,14 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
               onChange={(e) => setForm((f) => ({ ...f, instructor_phone: e.target.value }))}
             />
           </div>
+          <div className="space-y-1 col-span-2">
+            <Label className="text-xs">הערות</Label>
+            <Textarea
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              rows={3}
+            />
+          </div>
         </div>
         <div className="flex gap-2 justify-end">
           <button
@@ -202,6 +212,9 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
         <div className="text-sm mt-0.5" dir="ltr">
           {session.instructor_phone}
         </div>
+      )}
+      {session.notes && (
+        <div className="text-sm mt-1 whitespace-pre-wrap opacity-90">{session.notes}</div>
       )}
     </div>
   );
