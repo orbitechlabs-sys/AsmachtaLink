@@ -151,7 +151,44 @@ export async function updateCertification(id: number, input: Partial<Certificati
 }
 
 export async function deleteCertification(id: number) {
-  await execute("DELETE FROM certifications WHERE id = $1", [id]);
+  await withTransaction(async (client) => {
+    // Roster entries, quotas, prerequisites and taxes are removed automatically by
+    // ON DELETE CASCADE, and battalion_requests.linked_certification_id is SET NULL.
+    // But status_history and notifications are polymorphic (entity_type/entity_id,
+    // no FK), so they must be cleaned up explicitly to avoid orphaned rows — both the
+    // certification's own audit/notification rows and those of its roster entries.
+    const rosterResult = await execute(
+      "SELECT id FROM roster_entries WHERE certification_id = $1",
+      [id],
+      client
+    );
+    const rosterIds = (rosterResult.rows as { id: number }[]).map((r) => r.id);
+
+    await execute(
+      "DELETE FROM status_history WHERE entity_type = 'certification' AND entity_id = $1",
+      [id],
+      client
+    );
+    await execute(
+      "DELETE FROM notifications WHERE entity_type = 'certification' AND entity_id = $1",
+      [id],
+      client
+    );
+    if (rosterIds.length > 0) {
+      await execute(
+        "DELETE FROM status_history WHERE entity_type = 'roster_entry' AND entity_id = ANY($1::int[])",
+        [rosterIds],
+        client
+      );
+      await execute(
+        "DELETE FROM notifications WHERE entity_type = 'roster_entry' AND entity_id = ANY($1::int[])",
+        [rosterIds],
+        client
+      );
+    }
+
+    await execute("DELETE FROM certifications WHERE id = $1", [id], client);
+  });
 }
 
 const VALID_TRANSITIONS: Record<CertificationStatus, CertificationStatus[]> = {

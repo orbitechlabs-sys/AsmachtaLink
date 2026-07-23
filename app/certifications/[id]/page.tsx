@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { RosterTable } from "@/components/roster/roster-table";
 import { CertificationStatusChanger } from "@/components/certifications/status-changer";
+import { DeleteCertificationButton } from "@/components/certifications/delete-certification-button";
 import { ConfirmCompletionPanel } from "@/components/certifications/confirm-completion-panel";
 import { StatusHistoryTimeline } from "@/components/audit/status-history-timeline";
 import { TaxList } from "@/components/certifications/tax-list";
@@ -78,12 +79,15 @@ export default async function CertificationDetailPage({
             </Link>
           </Button>
           {canManage && (
-            <Button variant="outline" asChild>
-              <Link href={`/certifications/${cert.id}/edit`}>
-                <Pencil className="size-4" />
-                עריכה
-              </Link>
-            </Button>
+            <>
+              <Button variant="outline" asChild>
+                <Link href={`/certifications/${cert.id}/edit`}>
+                  <Pencil className="size-4" />
+                  עריכה
+                </Link>
+              </Button>
+              <DeleteCertificationButton certificationId={cert.id} certificationName={cert.name} />
+            </>
           )}
         </div>
       </div>
