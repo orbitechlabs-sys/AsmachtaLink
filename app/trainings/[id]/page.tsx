@@ -9,6 +9,7 @@ import { canManageTrainings, canEdit } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { SessionCard } from "@/components/trainings/session-card";
+import { DeleteTrainingButton } from "@/components/trainings/delete-training-button";
 import { getWeekNumber, getHebrewDayRangeLabel, getHebrewWeekdayShort } from "@/lib/utils/dates";
 import { Pencil } from "lucide-react";
 
@@ -62,6 +63,7 @@ export default async function TrainingDetailPage({
                 עריכה
               </Link>
             </Button>
+            <DeleteTrainingButton trainingId={training.id} trainingName={training.name} />
           </div>
         )}
       </div>
