@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { SessionCard } from "@/components/trainings/session-card";
 import { DeleteTrainingButton } from "@/components/trainings/delete-training-button";
+import { TrainingPdfExport } from "@/components/trainings/training-pdf-export";
 import { getWeekNumber, getHebrewDayRangeLabel, getHebrewWeekdayShort } from "@/lib/utils/dates";
 import { Pencil } from "lucide-react";
 
@@ -55,17 +56,20 @@ export default async function TrainingDetailPage({
             </span>
           </p>
         </div>
-        {canManage && (
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link href={`/trainings/${training.id}/edit`}>
-                <Pencil className="size-4" />
-                עריכה
-              </Link>
-            </Button>
-            <DeleteTrainingButton trainingId={training.id} trainingName={training.name} />
-          </div>
-        )}
+        <div className="flex gap-2">
+          <TrainingPdfExport training={training} sessions={sessions} battalions={battalions} />
+          {canManage && (
+            <>
+              <Button variant="outline" asChild>
+                <Link href={`/trainings/${training.id}/edit`}>
+                  <Pencil className="size-4" />
+                  עריכה
+                </Link>
+              </Button>
+              <DeleteTrainingButton trainingId={training.id} trainingName={training.name} />
+            </>
+          )}
+        </div>
       </div>
 
       <div className="rounded-lg border p-3 space-y-1">
