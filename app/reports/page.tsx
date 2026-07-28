@@ -19,7 +19,9 @@ export default async function ReportsPage({
 }) {
   const { from: fromParam, to: toParam } = await searchParams;
   const today = new Date();
-  const from = fromParam ?? format(addDays(today, -7), "yyyy-MM-dd");
+  // Default range: today → one week ahead. `format` uses local time, so no UTC
+  // off-by-one. Explicit ?? params still let the user pick any range manually.
+  const from = fromParam ?? format(today, "yyyy-MM-dd");
   const to = toParam ?? format(addDays(today, 7), "yyyy-MM-dd");
 
   const [certs, trainings] = await Promise.all([
