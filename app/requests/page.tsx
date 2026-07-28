@@ -8,6 +8,7 @@ import { battalionCodeOf, canManageCertifications, canEdit, isBrigade } from "@/
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { CertificationGapsTable } from "@/components/requests/certification-gaps-table";
 import { RequestsExportActions, REQUESTS_PAGE_CONTENT_ID } from "@/components/requests/requests-export-actions";
+import { DeleteRequestButton } from "@/components/requests/delete-request-button";
 import { URGENCY_LABELS, type Urgency } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -62,31 +63,40 @@ export default async function RequestsPage() {
         </div>
         <div className="space-y-2">
           {requests.map((r) => (
-            <Link
+            <div
               key={r.id}
-              href={`/requests/${r.id}`}
               data-pdf-atomic
-              className="block rounded-lg border-e-4 bg-card shadow-sm p-3 hover:shadow-md transition-shadow"
+              className="relative rounded-lg border-e-4 bg-card shadow-sm hover:shadow-md transition-shadow"
               style={{ borderInlineEndColor: battalionMap.get(r.battalion_id)?.color_hex }}
             >
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="font-medium">
-                  <span
-                    className="font-bold"
-                    style={{ color: battalionMap.get(r.battalion_id)?.color_hex }}
-                  >
-                    {battalionMap.get(r.battalion_id)?.name}
+              <Link href={`/requests/${r.id}`} className="block p-3 pe-12">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-medium">
+                    <span
+                      className="font-bold"
+                      style={{ color: battalionMap.get(r.battalion_id)?.color_hex }}
+                    >
+                      {battalionMap.get(r.battalion_id)?.name}
+                    </span>
+                    {" · "}
+                    {r.requested_cert_type} ({r.quantity_needed})
                   </span>
-                  {" · "}
-                  {r.requested_cert_type} ({r.quantity_needed})
-                </span>
-                <RequestStatusBadge status={r.status} />
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                דחיפות: {URGENCY_LABELS[r.urgency as Urgency]} · נפתחה{" "}
-                {new Date(r.created_at).toLocaleDateString("he-IL")}
-              </p>
-            </Link>
+                  <RequestStatusBadge status={r.status} />
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  דחיפות: {URGENCY_LABELS[r.urgency as Urgency]} · נפתחה{" "}
+                  {new Date(r.created_at).toLocaleDateString("he-IL")}
+                </p>
+              </Link>
+              {canManageCertifications(role) && canEditData && (
+                <div className="absolute top-1.5 left-1.5 no-print">
+                  <DeleteRequestButton
+                    requestId={r.id}
+                    requestName={`${battalionMap.get(r.battalion_id)?.name ?? ""} · ${r.requested_cert_type}`}
+                  />
+                </div>
+              )}
+            </div>
           ))}
           {requests.length === 0 && (
             <p data-pdf-atomic className="text-muted-foreground text-sm">

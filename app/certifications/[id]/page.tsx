@@ -7,10 +7,11 @@ import {
   listTaxes,
 } from "@/lib/db/repositories/certifications";
 import { listReserveForCertification, listRosterForCertification } from "@/lib/db/repositories/roster";
-import { listBattalions } from "@/lib/db/repositories/battalions";
+import { getBattalionByCode, listBattalions } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
-import { canManageCertifications, canEdit } from "@/lib/auth/permissions";
+import { battalionCodeOf, canManageCertifications, canEdit, isBrigade } from "@/lib/auth/permissions";
+import { QuotaRegistrationPanel } from "@/components/certifications/quota-registration-panel";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { RosterTable } from "@/components/roster/roster-table";
@@ -46,6 +47,11 @@ export default async function CertificationDetailPage({
   const canManage = canManageCertifications(role) && canEdit(me);
   const canEditData = canEdit(me);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+
+  // The caller's own battalion (from the view-scope cookie), used to show that
+  // battalion its trainee-approval action. null for brigade or non-editors.
+  const myBattalion = !isBrigade(role) ? await getBattalionByCode(battalionCodeOf(role) ?? "") : null;
+  const myBattalionId = canEditData && myBattalion ? myBattalion.id : null;
 
   const today = new Date().toISOString().slice(0, 10);
   const pendingStatuses = ["registered", "pending_approval", "approved"];
@@ -135,6 +141,15 @@ export default async function CertificationDetailPage({
       </div>
 
       {cert.notes && <p className="text-sm text-muted-foreground">{cert.notes}</p>}
+
+      <QuotaRegistrationPanel
+        certificationId={cert.id}
+        quotas={quotas}
+        battalions={battalions}
+        canManage={canManage}
+        myBattalionId={myBattalionId}
+        nowMs={new Date().getTime()}
+      />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

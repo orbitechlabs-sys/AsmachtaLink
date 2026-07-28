@@ -346,7 +346,17 @@ export async function getCertificationBattalions(certificationId: number): Promi
 
 export async function listQuotas(certificationId: number): Promise<CertificationBattalionQuota[]> {
   return query<CertificationBattalionQuota>(
-    "SELECT * FROM certification_battalion_quotas WHERE certification_id = $1", [certificationId]
+    "SELECT * FROM certification_battalion_quotas WHERE certification_id = $1 ORDER BY battalion_id", [certificationId]
+  );
+}
+
+export async function getQuota(
+  certificationId: number,
+  battalionId: number
+): Promise<CertificationBattalionQuota | undefined> {
+  return queryOne<CertificationBattalionQuota>(
+    "SELECT * FROM certification_battalion_quotas WHERE certification_id = $1 AND battalion_id = $2",
+    [certificationId, battalionId]
   );
 }
 
@@ -355,16 +365,41 @@ export async function replaceQuotas(
   quotas: { battalion_id: number; allocated_slots: number; notes?: string }[]
 ) {
   await withTransaction(async (client) => {
+    // Preserve any registration lock deadlines across the delete+reinsert, keyed by
+    // battalion — the quota form doesn't carry them, so they'd otherwise be wiped.
+    const existing = await query<{ battalion_id: number; registration_lock_at: string | null }>(
+      "SELECT battalion_id, registration_lock_at FROM certification_battalion_quotas WHERE certification_id = $1",
+      [certificationId],
+      client
+    );
+    const lockByBattalion = new Map(existing.map((q) => [q.battalion_id, q.registration_lock_at]));
+
     await execute("DELETE FROM certification_battalion_quotas WHERE certification_id = $1", [certificationId], client);
     for (const q of quotas) {
       await execute(
-        `INSERT INTO certification_battalion_quotas (certification_id, battalion_id, allocated_slots, notes)
-         VALUES ($1, $2, $3, $4)`,
-        [certificationId, q.battalion_id, q.allocated_slots, q.notes ?? null],
+        `INSERT INTO certification_battalion_quotas (certification_id, battalion_id, allocated_slots, notes, registration_lock_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [certificationId, q.battalion_id, q.allocated_slots, q.notes ?? null, lockByBattalion.get(q.battalion_id) ?? null],
         client
       );
     }
   });
+}
+
+/** Sets/clears the registration lock deadline on an existing allocation. Returns the
+ * number of rows updated (0 = no allocation for that battalion). `lockAt` is an ISO
+ * timestamp string (stored into a timestamptz) or null to remove the lock. */
+export async function setQuotaRegistrationLock(
+  certificationId: number,
+  battalionId: number,
+  lockAt: string | null
+): Promise<number> {
+  const result = await execute(
+    `UPDATE certification_battalion_quotas SET registration_lock_at = $1
+      WHERE certification_id = $2 AND battalion_id = $3`,
+    [lockAt, certificationId, battalionId]
+  );
+  return result.rowCount;
 }
 
 export async function listTaxes(certificationId: number): Promise<CertificationTax[]> {

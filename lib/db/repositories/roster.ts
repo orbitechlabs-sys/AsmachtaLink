@@ -161,3 +161,50 @@ export async function updateRosterStatus(
 export async function deleteRosterEntry(id: number) {
   await execute("DELETE FROM roster_entries WHERE id = $1", [id]);
 }
+
+/** Battalion approves its trainee list for a certification allocation: submits its
+ * still-`registered` (non-reserve) entries to `pending_approval` for brigade review.
+ * The registration-lock deadline is enforced by the caller (API) before this runs.
+ * Returns the number of entries submitted. */
+export async function approveTraineeList(
+  certificationId: number,
+  battalionId: number,
+  changedByRole: string
+): Promise<number> {
+  const entries = await query<{ id: number; status: string }>(
+    `SELECT id, status FROM roster_entries
+      WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 0 AND status = 'registered'`,
+    [certificationId, battalionId]
+  );
+  if (entries.length === 0) return 0;
+
+  await withTransaction(async (client) => {
+    for (const entry of entries) {
+      await execute(
+        `UPDATE roster_entries SET status = 'pending_approval', updated_at = NOW() WHERE id = $1`,
+        [entry.id],
+        client
+      );
+      await recordStatusChange(
+        "roster_entry",
+        entry.id,
+        entry.status,
+        "pending_approval",
+        changedByRole,
+        "אושרה רשימת מתאמנים ע\"י הגדוד",
+        client
+      );
+    }
+    await createNotification(
+      {
+        type: "soldier_added",
+        target_role: "brigade",
+        entity_type: "certification",
+        entity_id: certificationId,
+        message: `גדוד אישר רשימת ${entries.length} מתאמנים להסמכה`,
+      },
+      client
+    );
+  });
+  return entries.length;
+}

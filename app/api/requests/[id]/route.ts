@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { getRequest, updateRequest } from "@/lib/db/repositories/requests";
+import { deleteRequest, getRequest, updateRequest } from "@/lib/db/repositories/requests";
 import { requestSchema } from "@/lib/validation/request";
+import { requireEditor } from "@/lib/auth/user";
+import { getCurrentRole } from "@/lib/auth/current-role";
+import { isBrigade } from "@/lib/auth/permissions";
 
 export async function GET(
   _request: Request,
@@ -23,5 +26,22 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   await updateRequest(Number(id), parsed.data);
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  // Authoritative privilege gate (server-side identity). Deleting a request is a
+  // brigade action; the brigade/battalion distinction is a cookie-based view scope.
+  const gate = await requireEditor();
+  if (gate instanceof NextResponse) return gate;
+  const role = await getCurrentRole();
+  if (!isBrigade(role)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  const { id } = await params;
+  await deleteRequest(Number(id));
   return NextResponse.json({ ok: true });
 }

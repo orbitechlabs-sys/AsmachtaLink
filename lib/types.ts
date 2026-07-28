@@ -209,6 +209,9 @@ export interface CertificationBattalionQuota {
   battalion_id: number;
   allocated_slots: number;
   notes: string | null;
+  /** Deadline (ISO timestamptz) after which the battalion can no longer
+   * register/edit trainees for this allocation. NULL = no lock. */
+  registration_lock_at: string | null;
 }
 
 export interface RosterEntry {
@@ -245,6 +248,18 @@ export interface BattalionRequest {
   linked_certification_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A soldier a battalion designated on a request. On opening a certification from
+ * the request, these become reserve roster entries (is_reserve = 1). */
+export interface BattalionRequestSoldier {
+  id: number;
+  request_id: number;
+  full_name: string;
+  personal_number: string | null;
+  phone: string | null;
+  battalion_id: number | null;
+  created_at: string;
 }
 
 export interface StatusHistoryEntry {

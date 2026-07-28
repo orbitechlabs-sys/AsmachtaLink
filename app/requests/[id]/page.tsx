@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getRequest } from "@/lib/db/repositories/requests";
+import { listByRequest } from "@/lib/db/repositories/request-soldiers";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
 import { listCertifications } from "@/lib/db/repositories/certifications";
 import { getCurrentRole } from "@/lib/auth/current-role";
@@ -7,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth/user";
 import { canApproveRequests, canEdit } from "@/lib/auth/permissions";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { RequestActionsPanel } from "@/components/requests/request-actions-panel";
+import { RequestSoldiersSection } from "@/components/requests/request-soldiers-section";
 import { StatusHistoryTimeline } from "@/components/audit/status-history-timeline";
 import { URGENCY_LABELS, type Urgency } from "@/lib/types";
 import Link from "next/link";
@@ -26,6 +28,7 @@ export default async function RequestDetailPage({
   const role = await getCurrentRole();
   const me = await getCurrentUser();
   const openCerts = await listCertifications({ status: "open" });
+  const soldiers = await listByRequest(request.id);
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -67,6 +70,13 @@ export default async function RequestDetailPage({
       {canApproveRequests(role) && canEdit(me) && (
         <RequestActionsPanel request={request} openCertifications={openCerts} />
       )}
+
+      <RequestSoldiersSection
+        requestId={request.id}
+        soldiers={soldiers}
+        battalionId={request.battalion_id}
+        canEdit={canEdit(me)}
+      />
 
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">היסטוריה</h2>

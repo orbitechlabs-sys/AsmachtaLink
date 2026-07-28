@@ -137,6 +137,47 @@ export async function openCertificationFromRequest(
       origin_request_id: requestId,
       created_by_role: changedByRole,
     }, client);
+
+    // Auto-insert the request's designated soldiers as reserve roster entries
+    // (is_reserve = 1, not counted against capacity). Kept in the same transaction
+    // as the certification creation so it's all-or-nothing.
+    const soldiers = await query<{
+      full_name: string;
+      personal_number: string | null;
+      phone: string | null;
+      battalion_id: number | null;
+    }>(
+      "SELECT full_name, personal_number, phone, battalion_id FROM battalion_request_soldiers WHERE request_id = $1",
+      [requestId],
+      client
+    );
+    for (const s of soldiers) {
+      const inserted = await execute(
+        `INSERT INTO roster_entries
+            (certification_id, battalion_id, full_name, personal_number, phone, is_reserve, status)
+           VALUES ($1, $2, $3, $4, $5, 1, 'registered')
+         RETURNING id`,
+        [
+          certId,
+          s.battalion_id ?? existing.battalion_id,
+          s.full_name,
+          s.personal_number ?? "",
+          s.phone ?? null,
+        ],
+        client
+      );
+      const rosterId = (inserted.rows[0] as { id: number }).id;
+      await recordStatusChange(
+        "roster_entry",
+        rosterId,
+        null,
+        "registered",
+        changedByRole,
+        "נוסף כעתודה מהדרישה",
+        client
+      );
+    }
+
     await execute(
       `UPDATE battalion_requests SET status = 'certification_opened', linked_certification_id = $1, updated_at = NOW()
        WHERE id = $2`, [certId, requestId], client
@@ -161,6 +202,27 @@ export async function openCertificationFromRequest(
       message: `נפתחה הסמכה חדשה "${certInput.name}" בעקבות הדרישה שהגשתם`,
     }, client);
     return certId;
+  });
+}
+
+/** Hard-deletes a request so it drops off the requests list. Designated soldiers
+ * are removed via FK ON DELETE CASCADE; the polymorphic status_history and
+ * notifications rows (entity_type/entity_id, no FK) are cleaned up explicitly —
+ * mirroring deleteCertification. Wrapped in a transaction for atomicity. */
+export async function deleteRequest(id: number) {
+  await withTransaction(async (client) => {
+    await execute(
+      "DELETE FROM status_history WHERE entity_type = 'battalion_request' AND entity_id = $1",
+      [id],
+      client
+    );
+    await execute(
+      "DELETE FROM notifications WHERE entity_type = 'battalion_request' AND entity_id = $1",
+      [id],
+      client
+    );
+    // battalion_request_soldiers rows cascade via the FK when the request is removed.
+    await execute("DELETE FROM battalion_requests WHERE id = $1", [id], client);
   });
 }
 
