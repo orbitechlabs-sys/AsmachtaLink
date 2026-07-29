@@ -5,12 +5,17 @@ import {
   listQuotas,
   listTaxes,
 } from "@/lib/db/repositories/certifications";
+import { listByCertification as listCertificationFiles } from "@/lib/db/repositories/certification-files";
+import { withSignedUrls } from "@/lib/storage/certification-files";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listTemplates } from "@/lib/db/repositories/templates";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { listPaletteColors } from "@/lib/db/repositories/course-colors";
 import { randomPaletteColor } from "@/lib/utils/palette";
+import { getCurrentUser } from "@/lib/auth/user";
+import { canEdit } from "@/lib/auth/permissions";
 import { CertificationForm } from "@/components/certifications/certification-form";
+import { CertificationFilesSection } from "@/components/certifications/certification-files-section";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +28,23 @@ export default async function EditCertificationPage({
   const cert = await getCertificationById(Number(id));
   if (!cert) notFound();
 
-  const [battalions, templates, gapRows, palette, prerequisiteRows, quotas, taxRows] = await Promise.all([
-    listBattalions(),
-    listTemplates(),
-    listGapRows(),
-    listPaletteColors(),
-    listPrerequisites(cert.id),
-    listQuotas(cert.id),
-    listTaxes(cert.id),
-  ]);
+  const [battalions, templates, gapRows, palette, prerequisiteRows, quotas, taxRows, me, fileRows] =
+    await Promise.all([
+      listBattalions(),
+      listTemplates(),
+      listGapRows(),
+      listPaletteColors(),
+      listPrerequisites(cert.id),
+      listQuotas(cert.id),
+      listTaxes(cert.id),
+      getCurrentUser(),
+      listCertificationFiles(cert.id),
+    ]);
+  // Signed URLs are generated server-side per request and never persisted. A storage
+  // hiccup must not take the page down, so fall back to listing files without links.
+  const files = await withSignedUrls(fileRows).catch(() =>
+    fileRows.map((f) => ({ ...f, signed_url: null }))
+  );
   const prerequisites = prerequisiteRows.map((p) => p.description);
   const defaultQuotas: Record<number, number> = {};
   for (const q of quotas) defaultQuotas[q.battalion_id] = q.allocated_slots;
@@ -66,6 +79,10 @@ export default async function EditCertificationPage({
           prerequisites,
         }}
       />
+
+      {/* Attachments live on the saved certification, so they only appear here (edit
+          mode) and only for users who may edit — same guard as the API routes. */}
+      {canEdit(me) && <CertificationFilesSection certificationId={cert.id} files={files} />}
     </div>
   );
 }

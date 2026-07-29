@@ -7,6 +7,8 @@ import {
   listTaxes,
 } from "@/lib/db/repositories/certifications";
 import { listReserveForCertification, listRosterForCertification } from "@/lib/db/repositories/roster";
+import { listByCertification as listCertificationFiles } from "@/lib/db/repositories/certification-files";
+import { withSignedUrls } from "@/lib/storage/certification-files";
 import { getBattalionByCode, listBattalions } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
@@ -20,8 +22,9 @@ import { DeleteCertificationButton } from "@/components/certifications/delete-ce
 import { ConfirmCompletionPanel } from "@/components/certifications/confirm-completion-panel";
 import { StatusHistoryTimeline } from "@/components/audit/status-history-timeline";
 import { TaxList } from "@/components/certifications/tax-list";
+import { CertificationFilesList } from "@/components/certifications/certification-files-list";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
-import { Pencil, Plus, Printer } from "lucide-react";
+import { Paperclip, Pencil, Plus, Printer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,16 +37,23 @@ export default async function CertificationDetailPage({
   const cert = await getCertificationById(Number(id));
   if (!cert) notFound();
 
-  const [prerequisites, quotas, taxes, roster, reserve, battalions, role, me] = await Promise.all([
-    listPrerequisites(cert.id),
-    listQuotas(cert.id),
-    listTaxes(cert.id),
-    listRosterForCertification(cert.id),
-    listReserveForCertification(cert.id),
-    listBattalions(),
-    getCurrentRole(),
-    getCurrentUser(),
-  ]);
+  const [prerequisites, quotas, taxes, roster, reserve, battalions, role, me, fileRows] =
+    await Promise.all([
+      listPrerequisites(cert.id),
+      listQuotas(cert.id),
+      listTaxes(cert.id),
+      listRosterForCertification(cert.id),
+      listReserveForCertification(cert.id),
+      listBattalions(),
+      getCurrentRole(),
+      getCurrentUser(),
+      listCertificationFiles(cert.id),
+    ]);
+  // Signed URLs are generated server-side per request and never persisted. A storage
+  // hiccup must not take the page down, so fall back to listing files without links.
+  const files = await withSignedUrls(fileRows).catch(() =>
+    fileRows.map((f) => ({ ...f, signed_url: null }))
+  );
   const canManage = canManageCertifications(role) && canEdit(me);
   const canEditData = canEdit(me);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
@@ -193,6 +203,26 @@ export default async function CertificationDetailPage({
         ) : (
           <p className="text-sm text-muted-foreground">אין אנשי עתודה רשומים.</p>
         )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            קבצים מצורפים
+            {files.length > 0 && (
+              <span className="text-muted-foreground font-normal text-sm"> ({files.length})</span>
+            )}
+          </h2>
+          {canEditData && (
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/certifications/${cert.id}/edit`}>
+                <Paperclip className="size-4" />
+                ניהול קבצים
+              </Link>
+            </Button>
+          )}
+        </div>
+        <CertificationFilesList files={files} />
       </div>
 
       <div className="space-y-2">

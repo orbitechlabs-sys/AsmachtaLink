@@ -10,6 +10,8 @@ import {
   replaceTaxes,
   updateCertification,
 } from "@/lib/db/repositories/certifications";
+import { listByCertification as listCertificationFiles } from "@/lib/db/repositories/certification-files";
+import { removeCertificationFiles } from "@/lib/storage/certification-files";
 import { certificationPatchSchema } from "@/lib/validation/certification";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { canManageCertifications } from "@/lib/auth/permissions";
@@ -64,6 +66,15 @@ export async function DELETE(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const { id } = await params;
+  // certification_files rows go away via ON DELETE CASCADE, so collect the storage
+  // paths first and drop the objects too — otherwise the bucket keeps orphans.
+  const files = await listCertificationFiles(Number(id));
   await deleteCertification(Number(id));
+  if (files.length > 0) {
+    await removeCertificationFiles(files.map((f) => f.storage_path)).catch((err) =>
+      // The certification is already gone; a storage hiccup must not fail the delete.
+      console.error("[certifications] failed to remove attachment objects", err)
+    );
+  }
   return NextResponse.json({ ok: true });
 }

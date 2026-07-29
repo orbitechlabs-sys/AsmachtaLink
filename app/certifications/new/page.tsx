@@ -22,6 +22,8 @@ export default async function NewCertificationPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">הסמכה חדשה</h1>
+      {/* No upload control in the create flow — files attach to a saved certification. */}
+      <p className="text-sm text-muted-foreground">ניתן לצרף קבצים לאחר שמירת ההסמכה.</p>
       <CertificationForm
         battalions={battalions}
         templates={templates}

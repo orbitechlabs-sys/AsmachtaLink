@@ -214,6 +214,27 @@ export interface CertificationBattalionQuota {
   registration_lock_at: string | null;
 }
 
+/** Metadata for a file attached to a certification. The bytes live in the private
+ * Supabase Storage bucket (see lib/storage/certification-files.ts) at
+ * `storage_path`; only this row lives in Postgres. */
+export interface CertificationFile {
+  id: number;
+  certification_id: number;
+  storage_path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  /** Supabase auth user id of the uploader. */
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+/** A file row plus a signed URL generated for the current request. Signed URLs are
+ * short-lived and never persisted. */
+export interface CertificationFileWithUrl extends CertificationFile {
+  signed_url: string | null;
+}
+
 export interface RosterEntry {
   id: number;
   certification_id: number;
