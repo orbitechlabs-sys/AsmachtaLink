@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import {
@@ -21,6 +22,18 @@ export function AuthCard({
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
+        {/* Prominent brand mark above the form. Native asset is 500×678 — height-driven
+            classes with `w-auto` keep that aspect ratio at every breakpoint. */}
+        <div className="flex justify-center">
+          <Image
+            src="/logo228.png"
+            alt="לוגו 228 · מערכת ניהול הסמכות"
+            width={500}
+            height={678}
+            priority
+            className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto"
+          />
+        </div>
         <Link
           href="/"
           className="flex items-center justify-center gap-2 font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent"

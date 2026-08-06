@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -37,8 +38,21 @@ export function MainNav() {
     <header className="bg-card relative border-b-2 border-primary/20">
       <div className="absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-l from-primary via-chart-2 to-chart-4" />
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 p-3">
-        <Link href="/calendar" className="font-extrabold shrink-0 text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent">
-          מערכת ניהול הסמכות · 228
+        {/* RTL: DOM order runs right-to-left, so the logo after the title text renders
+            to its visual left. Native asset is 500×678 — height-driven classes with
+            `w-auto` keep that aspect ratio at every breakpoint. */}
+        <Link href="/calendar" className="flex items-center gap-2 shrink-0">
+          <span className="font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent">
+            מערכת ניהול הסמכות · 228
+          </span>
+          <Image
+            src="/logo228.png"
+            alt="לוגו 228 · מערכת ניהול הסמכות"
+            width={500}
+            height={678}
+            priority
+            className="h-8 md:h-10 lg:h-12 w-auto"
+          />
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 flex-1">
