@@ -34,10 +34,10 @@ export function DateRangePicker({ from, to }: { from: string; to: string }) {
           שבוע קדימה
         </Button>
         <Button variant="outline" size="sm" onClick={() => previousRange(14)}>
-          שבועיים קודם
+          שבועיים קדימה
         </Button>
         <Button variant="outline" size="sm" onClick={() => previousRange(30)}>
-          חודש קודם
+          חודש קדימה
         </Button>
       </div>
       <div className="flex items-end gap-2">
