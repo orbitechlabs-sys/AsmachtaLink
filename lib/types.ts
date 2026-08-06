@@ -235,6 +235,26 @@ export interface CertificationFileWithUrl extends CertificationFile {
   signed_url: string | null;
 }
 
+/** Saved configuration of a "פילוח הסמכות" report widget. Stored as jsonb; the counts
+ * are always recomputed live, never persisted. */
+export interface PivotWidgetConfig {
+  battalionIds: number[];
+  certificationIds: number[];
+  fromDate: string;
+  toDate?: string | null;
+}
+
+/** A saved pivot widget row. Global — visible to every viewer regardless of
+ * `created_by`, which is provenance only. */
+export interface SavedPivotWidget {
+  id: string;
+  name: string;
+  config: PivotWidgetConfig;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RosterEntry {
   id: number;
   certification_id: number;

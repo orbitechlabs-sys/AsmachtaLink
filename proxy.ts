@@ -7,8 +7,19 @@ const PUBLIC_ROUTES = [
   "/login", "/signup", "/reset-password", "/update-password", "/auth",
 ];
 
-/** API paths any authenticated user may call (identity + own notifications + view switch). */
-const API_ALLOW_ANY = ["/api/me", "/api/role", "/api/notifications"];
+/** API paths any authenticated user may call (identity + own notifications + view switch).
+ *
+ * `/api/reports/pivot` covers the whole pivot-report subtree: running the report is a
+ * POST only because its payload is two id arrays (it writes nothing), and saved widgets
+ * are shared report configuration that viewers may save/delete too. Both are therefore
+ * exempt from the viewers-are-read-only rule below. Approval and identity are still
+ * enforced authoritatively by `requireApprovedUser()` inside each handler. */
+const API_ALLOW_ANY = [
+  "/api/me",
+  "/api/role",
+  "/api/notifications",
+  "/api/reports/pivot",
+];
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
