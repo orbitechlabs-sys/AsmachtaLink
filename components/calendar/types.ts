@@ -1,4 +1,5 @@
 import type {
+  BattalionRequest,
   CertificationStatus,
   CertificationWithCounts,
   InfluencingFactor,
@@ -8,6 +9,17 @@ import { certificationColor } from "@/lib/utils/cert-colors";
 
 /** Influencing factors are always this fixed gray — never the per-course color. */
 export const INFLUENCING_FACTOR_COLOR = "#6b7280";
+
+/** Requests are a lighter fixed gray: nothing is scheduled yet, so they never take a
+ * per-course color. Distinct from the influencing-factor gray, and always drawn with the
+ * dashed outline below. */
+export const REQUEST_COLOR = "#94a3b8";
+
+/** Kinds drawn with the dashed-outline convention — anything that is not a scheduled
+ * certification: trainings (a different entity) and requests (not yet approved). */
+export function usesDashedOutline(kind: CalendarItemKind): boolean {
+  return kind === "training" || kind === "request";
+}
 
 /** Sort priority for calendar bars: influencing factors first (top), then the rest.
  * Lower sorts earlier / higher on screen. */
@@ -28,7 +40,11 @@ export type CalendarBattalionRef = {
   color_hex: string;
 };
 
-export type CalendarItemKind = "certification" | "training" | "influencing_factor";
+export type CalendarItemKind =
+  | "certification"
+  | "training"
+  | "influencing_factor"
+  | "request";
 
 /** A single time-bound entity rendered on the calendar. Certifications and trainings
  * are both projected into this unified shape so every view renders a color-coded
@@ -95,6 +111,29 @@ export function trainingToCalendarItem(
     location: null,
     href: `/trainings/${training.id}`,
     color: training.color_hex || certificationColor(training.domain || training.name),
+    battalions,
+    registration_open: 0,
+  };
+}
+
+/** Projects a certification request into a CalendarItem, positioned on its desired date
+ * (`desired_date`). A request is a single-day marker: there is no certification and no
+ * date range yet, so `end_date` stays null and there are no slots/status fields. Callers
+ * must skip requests without a desired date — there is nothing to place. */
+export function requestToCalendarItem(
+  request: BattalionRequest & { desired_date: string },
+  battalions: CalendarBattalionRef[]
+): CalendarItem {
+  return {
+    kind: "request",
+    id: request.id,
+    key: `request-${request.id}`,
+    name: `דרישה: ${request.requested_cert_type}`,
+    start_date: request.desired_date,
+    end_date: null,
+    location: null,
+    href: `/requests/${request.id}`,
+    color: REQUEST_COLOR,
     battalions,
     registration_open: 0,
   };

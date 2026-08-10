@@ -1,4 +1,5 @@
 import { execute, query, queryOne, withTransaction } from "@/lib/db/client";
+import type { PoolClient } from "pg";
 import type { RosterEntry, RosterStatus } from "@/lib/types";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
@@ -17,8 +18,76 @@ export async function listReserveForCertification(certificationId: number): Prom
   );
 }
 
+/** The battalion's soldiers on actual certifications. `certification_id IS NOT NULL`
+ * keeps request-stage soldiers (attached to a request, no certification yet) out — this
+ * list is about certification participation. */
 export async function listRosterForBattalion(battalionId: number): Promise<RosterEntry[]> {
-  return query<RosterEntry>("SELECT * FROM roster_entries WHERE battalion_id = $1 ORDER BY created_at DESC", [battalionId]);
+  return query<RosterEntry>(
+    "SELECT * FROM roster_entries WHERE battalion_id = $1 AND certification_id IS NOT NULL ORDER BY created_at DESC",
+    [battalionId]
+  );
+}
+
+/** Soldiers attached to a certification request (request-stage: certification_id NULL). */
+export async function listRosterForRequest(requestId: number): Promise<RosterEntry[]> {
+  return query<RosterEntry>(
+    "SELECT * FROM roster_entries WHERE battalion_request_id = $1 ORDER BY created_at ASC, id ASC",
+    [requestId]
+  );
+}
+
+/** A soldier attached to a request. Same fields as a roster entry minus anything
+ * certification-specific — there is no certification yet. */
+export interface RequestSoldierInput {
+  battalion_id: number;
+  full_name: string;
+  personal_number: string;
+  company_platoon?: string | null;
+  phone?: string | null;
+  commander_name?: string | null;
+  commander_phone?: string | null;
+  has_prior_certification?: boolean;
+  is_reserve?: boolean;
+  notes?: string | null;
+}
+
+/**
+ * Inserts a batch of request-stage soldiers into `roster_entries` with
+ * `certification_id` NULL. Takes a `PoolClient` so it runs inside the caller's
+ * transaction — the request and its soldiers are created atomically.
+ */
+export async function addRequestRosterEntries(
+  battalionRequestId: number,
+  soldiers: RequestSoldierInput[],
+  client: PoolClient
+): Promise<number[]> {
+  const ids: number[] = [];
+  for (const soldier of soldiers) {
+    const result = await execute(
+      `INSERT INTO roster_entries
+          (certification_id, battalion_request_id, battalion_id, full_name, personal_number,
+           company_platoon, phone, commander_name, commander_phone,
+           has_prior_certification, is_reserve, notes)
+         VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
+      [
+        battalionRequestId,
+        soldier.battalion_id,
+        soldier.full_name,
+        soldier.personal_number,
+        soldier.company_platoon ?? null,
+        soldier.phone ?? null,
+        soldier.commander_name ?? null,
+        soldier.commander_phone ?? null,
+        soldier.has_prior_certification ? 1 : 0,
+        soldier.is_reserve ? 1 : 0,
+        soldier.notes ?? null,
+      ],
+      client
+    );
+    ids.push((result.rows[0] as { id: number }).id);
+  }
+  return ids;
 }
 
 export async function getRosterEntry(id: number): Promise<RosterEntry | undefined> {

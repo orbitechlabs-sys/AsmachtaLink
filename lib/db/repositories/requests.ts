@@ -3,6 +3,7 @@ import type { BattalionRequest, RequestStatus, Urgency } from "@/lib/types";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 import { createCertification, CertificationInput } from "@/lib/db/repositories/certifications";
+import { addRequestRosterEntries, type RequestSoldierInput } from "@/lib/db/repositories/roster";
 
 export interface RequestFilters {
   battalionCode?: string;
@@ -41,6 +42,9 @@ export interface RequestInput {
   urgency?: Urgency;
   desired_date?: string | null;
   notes?: string | null;
+  /** Soldiers attached to the request, stored in `roster_entries` with a NULL
+   * certification_id and this request's id. Created in the same transaction. */
+  soldiers?: RequestSoldierInput[];
 }
 
 export async function createRequest(input: RequestInput): Promise<number> {
@@ -61,6 +65,11 @@ export async function createRequest(input: RequestInput): Promise<number> {
       ], client
     );
     const id = (result.rows[0] as { id: number }).id;
+    // Same transaction as the request itself: either the request and all of its
+    // soldiers land, or neither does.
+    if (input.soldiers?.length) {
+      await addRequestRosterEntries(id, input.soldiers, client);
+    }
     await recordStatusChange("battalion_request", id, null, "opened", `battalion:${input.battalion_id}`, undefined, client);
     await createNotification({
       type: "certification_opened",

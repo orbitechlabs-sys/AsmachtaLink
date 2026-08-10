@@ -257,7 +257,11 @@ export interface SavedPivotWidget {
 
 export interface RosterEntry {
   id: number;
-  certification_id: number;
+  /** NULL for a request-stage soldier: attached to a request before any
+   * certification exists (see `battalion_request_id`). */
+  certification_id: number | null;
+  /** Set when the soldier was attached to a certification request. */
+  battalion_request_id: number | null;
   battalion_id: number;
   full_name: string;
   personal_number: string;

@@ -7,7 +7,7 @@ import { ChevronRight, ChevronLeft, FileDown, Loader2, GraduationCap } from "luc
 import { Button } from "@/components/ui/button";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
 import { exportElementToSinglePagePdf } from "@/lib/utils/export-pdf";
-import type { CalendarItem } from "@/components/calendar/types";
+import { usesDashedOutline, type CalendarItem } from "@/components/calendar/types";
 import { cn } from "@/lib/utils";
 
 const MONTH_NAMES = [
@@ -184,7 +184,7 @@ export function YearGanttView({ items }: { items: CalendarItem[] }) {
                           "text-white text-[10px] px-1 truncate flex items-center gap-0.5 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
                           isTrueEnd ? "rounded-e-sm" : "rounded-e-none",
-                          item.kind === "training" &&
+                          usesDashedOutline(item.kind) &&
                             "outline outline-1 outline-dashed outline-white/80 -outline-offset-1"
                         )}
                         style={{

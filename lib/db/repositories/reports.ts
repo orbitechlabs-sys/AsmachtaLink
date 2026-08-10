@@ -30,7 +30,8 @@ export async function gapsByBattalion() {
     `SELECT b.name as battalion_name, b.color_hex,
               SUM(r.quantity_needed)::int as total_requested,
               (SELECT COUNT(*)::int FROM roster_entries re
-               WHERE re.battalion_id = b.id AND re.status IN ('approved','participated','passed')) as fulfilled
+               WHERE re.battalion_id = b.id AND re.certification_id IS NOT NULL
+                 AND re.status IN ('approved','participated','passed')) as fulfilled
        FROM battalion_requests r
        JOIN battalions b ON b.id = r.battalion_id
        WHERE r.status != 'closed'

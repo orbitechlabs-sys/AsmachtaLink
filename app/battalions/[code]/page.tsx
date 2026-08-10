@@ -25,8 +25,14 @@ export default async function BattalionDetailPage({
   const roster = await listRosterForBattalion(battalion.id);
   const requests = await listRequests({ battalionCode: code });
   const gapRows = await listGapRows();
+  // `certification_id` is nullable since request-stage soldiers exist, but
+  // listRosterForBattalion only returns certification-linked entries — the guard keeps
+  // the types honest without changing behaviour.
   const certifications = new Map(
-    (await Promise.all(roster.map(async (entry) => [entry.certification_id, await getCertificationById(entry.certification_id)] as const)))
+    (await Promise.all(roster.map(async (entry) => [
+      entry.certification_id,
+      entry.certification_id === null ? undefined : await getCertificationById(entry.certification_id),
+    ] as const)))
   );
   const role = await getCurrentRole();
   const me = await getCurrentUser();

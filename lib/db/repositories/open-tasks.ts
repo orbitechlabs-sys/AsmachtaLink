@@ -104,7 +104,10 @@ export async function countPendingRequests(): Promise<number> {
 
 export async function countPendingApprovals(): Promise<number> {
   const row = await queryOne<{ c: number }>(
-    `SELECT COUNT(*)::int as c FROM roster_entries WHERE status = 'pending_approval'`
+    // certification_id IS NOT NULL: request-stage soldiers have no certification to be
+    // approved for, so they never count as a pending approval.
+    `SELECT COUNT(*)::int as c FROM roster_entries
+      WHERE status = 'pending_approval' AND certification_id IS NOT NULL`
   );
   return row?.c ?? 0;
 }

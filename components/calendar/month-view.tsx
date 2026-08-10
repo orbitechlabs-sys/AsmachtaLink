@@ -22,6 +22,7 @@ import { ChevronRight, ChevronLeft, GraduationCap } from "lucide-react";
 import { CertificationChip } from "@/components/calendar/certification-chip";
 import {
   compareCalendarItems,
+  usesDashedOutline,
   type CalendarItem,
 } from "@/components/calendar/types";
 import { getWeekNumber } from "@/lib/utils/dates";
@@ -181,7 +182,7 @@ export function MonthView({ items }: { items: CalendarItem[] }) {
                           "pointer-events-auto text-white px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",
                           isTrueStart ? "rounded-s-sm" : "rounded-s-none",
                           isTrueEnd ? "rounded-e-sm" : "rounded-e-none",
-                          item.kind === "training" &&
+                          usesDashedOutline(item.kind) &&
                             "outline outline-2 outline-dashed outline-white/70 -outline-offset-2"
                         )}
                         style={{

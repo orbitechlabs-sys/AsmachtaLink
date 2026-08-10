@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createRequest, listRequests } from "@/lib/db/repositories/requests";
 import { requestSchema } from "@/lib/validation/request";
 import { getCurrentRole } from "@/lib/auth/current-role";
+import { requireEditor } from "@/lib/auth/user";
 import { battalionCodeOf, isBrigade } from "@/lib/auth/permissions";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
 import type { RequestStatus } from "@/lib/types";
@@ -21,6 +22,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // Authoritative privilege gate on the authenticated server-side identity — the
+  // active_role cookie below is only the organizational view scope, never authorization.
+  const gate = await requireEditor();
+  if (gate instanceof NextResponse) return gate;
+
   const role = await getCurrentRole();
   const body = await request.json();
   const parsed = requestSchema.safeParse(body);
@@ -31,6 +37,11 @@ export async function POST(request: Request) {
     const code = battalionCodeOf(role);
     const battalion = await getBattalionByCode(code ?? "");
     if (!battalion || battalion.id !== parsed.data.battalion_id) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    // Attached soldiers must belong to the caller's own battalion too — the payload is
+    // client-supplied, so the picker's restriction is not a guarantee.
+    if (parsed.data.soldiers.some((s) => s.battalion_id !== battalion.id)) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
   }
