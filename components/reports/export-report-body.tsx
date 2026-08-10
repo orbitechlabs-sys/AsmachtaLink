@@ -156,7 +156,7 @@ export function ExportReportBody({
       <div id={EXPORT_REPORT_CONTENT_ID} className="space-y-6 bg-background p-2">
         <div data-pdf-atomic className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brigade-logo.png" alt="חטיבה 228" className="size-12" />
+          <img src="/logo228.png" alt="חטיבה 228" className="h-12 w-auto" />
           <div>
             <h1 className="text-2xl font-bold">סיכום הסמכות והדרכות</h1>
             <p className="text-muted-foreground">

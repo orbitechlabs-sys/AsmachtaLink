@@ -40,7 +40,7 @@ export default async function RequestsPage() {
         <div data-pdf-atomic className="space-y-2">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brigade-logo.png" alt="חטיבה 228" className="size-10" />
+            <img src="/logo228.png" alt="חטיבה 228" className="h-10 w-auto" />
             <h1 className="text-2xl font-bold">פערי הסמכות ביחס לשיבוץ</h1>
           </div>
           <CertificationGapsTable

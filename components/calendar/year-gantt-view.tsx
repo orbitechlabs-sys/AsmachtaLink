@@ -114,7 +114,7 @@ export function YearGanttView({ items }: { items: CalendarItem[] }) {
         <div id={CONTENT_ID} className="bg-background p-2">
           <div className="flex items-center justify-center gap-2 py-1 bg-primary text-primary-foreground rounded-t-md font-bold">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brigade-logo.png" alt="חטיבה 228" className="size-6" />
+            <img src="/logo228.png" alt="חטיבה 228" className="h-6 w-auto" />
             <span>גאנט {year}</span>
           </div>
           {MONTH_NAMES.map((monthName, monthIdx) => {
