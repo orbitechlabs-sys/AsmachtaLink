@@ -1,3 +1,5 @@
+import { pdfCaptureOptions } from "@/lib/utils/pdf-capture";
+
 /**
  * Capture an off-screen printable container and paginate it into a PDF, entirely
  * client-side.
@@ -40,11 +42,7 @@ export async function exportPrintContainerToPdf(rootId: string, filename: string
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const canvas = await html2canvas(block, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-    });
+    const canvas = await html2canvas(block, pdfCaptureOptions());
     const imgData = canvas.toDataURL("image/jpeg", 0.9);
     const imgHeight = (canvas.height * usableWidth) / canvas.width;
 

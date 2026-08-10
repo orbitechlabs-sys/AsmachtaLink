@@ -7,7 +7,7 @@ import { FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
 import type { ExportCertification, ExportTraining } from "@/lib/db/repositories/export";
 import { downloadBlob } from "@/lib/utils/download-file";
-import { exportElementToPdf } from "@/lib/utils/export-pdf";
+import { pdfCaptureOptions } from "@/lib/utils/pdf-capture";
 
 const CONTENT_ID = "export-report-content";
 
@@ -41,27 +41,30 @@ export function ExportReportActions({
       const margin = 8;
       const usableWidth = pageWidth - margin * 2;
 
-      function estimateHeightMm(el: HTMLElement) {
-        const rect = el.getBoundingClientRect();
-        return (rect.height / rect.width) * usableWidth;
+      // Capture every block up front. Pagination needs each block's real captured
+      // height: measuring the live DOM instead would describe the on-screen layout,
+      // which on a phone is a tall narrow column and nothing like the pinned-width
+      // capture — so the "keep a day header with its first card" lookahead would
+      // reserve the wrong amount of room.
+      const captured: { imgData: string; heightMm: number; groupStart: boolean }[] = [];
+      for (const block of blocks) {
+        const canvas = await html2canvas(block, pdfCaptureOptions());
+        captured.push({
+          imgData: canvas.toDataURL("image/jpeg", 0.85),
+          heightMm: (canvas.height * usableWidth) / canvas.width,
+          groupStart: block.dataset.pdfGroupStart === "true",
+        });
       }
 
       let cursorY = margin;
       let isFirstOnPage = true;
 
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-        const canvas = await html2canvas(block, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-        });
-        const imgData = canvas.toDataURL("image/jpeg", 0.85);
-        const imgHeight = (canvas.height * usableWidth) / canvas.width;
+      for (let i = 0; i < captured.length; i++) {
+        const { imgData, heightMm, groupStart } = captured[i];
 
-        let requiredHeight = imgHeight;
-        if (block.dataset.pdfGroupStart === "true" && blocks[i + 1]) {
-          requiredHeight += estimateHeightMm(blocks[i + 1]);
+        let requiredHeight = heightMm;
+        if (groupStart && captured[i + 1]) {
+          requiredHeight += captured[i + 1].heightMm;
         }
 
         if (!isFirstOnPage && cursorY + requiredHeight > pageHeight - margin) {
@@ -70,8 +73,8 @@ export function ExportReportActions({
           isFirstOnPage = true;
         }
 
-        pdf.addImage(imgData, "JPEG", margin, cursorY, usableWidth, imgHeight);
-        cursorY += imgHeight;
+        pdf.addImage(imgData, "JPEG", margin, cursorY, usableWidth, heightMm);
+        cursorY += heightMm;
         isFirstOnPage = false;
       }
 

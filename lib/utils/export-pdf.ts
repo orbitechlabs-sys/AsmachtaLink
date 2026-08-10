@@ -1,3 +1,5 @@
+import { pdfCaptureOptions } from "@/lib/utils/pdf-capture";
+
 function replaceInputsWithText(clonedDoc: Document) {
   const inputs = clonedDoc.querySelectorAll("input");
   inputs.forEach((input) => {
@@ -46,12 +48,7 @@ export async function exportElementToPdf(containerId: string, filename: string) 
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const canvas = await html2canvas(block, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      onclone: replaceInputsWithText,
-    });
+    const canvas = await html2canvas(block, pdfCaptureOptions(replaceInputsWithText));
     const imgData = canvas.toDataURL("image/jpeg", 0.85);
     const imgHeight = (canvas.height * usableWidth) / canvas.width;
 
@@ -89,12 +86,7 @@ export async function exportElementToSinglePagePdf(
   const html2canvas = (await import("html2canvas-pro")).default;
   const { jsPDF } = await import("jspdf");
 
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: "#ffffff",
-    onclone: replaceInputsWithText,
-  });
+  const canvas = await html2canvas(element, pdfCaptureOptions(replaceInputsWithText));
 
   const widthMm = opts?.widthMm ?? 400;
   const heightMm = (canvas.height * widthMm) / canvas.width;
