@@ -5,25 +5,22 @@ import {
   getInfluencingFactorBattalions,
 } from "@/lib/db/repositories/influencing-factors";
 import { listBattalions } from "@/lib/db/repositories/battalions";
-import { listRequests } from "@/lib/db/repositories/requests";
 import { CalendarClient } from "@/components/calendar/calendar-client";
 import {
   certificationToCalendarItem,
   trainingToCalendarItem,
   influencingFactorToCalendarItem,
-  requestToCalendarItem,
   type CalendarItem,
 } from "@/components/calendar/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function CalendarPage() {
-  const [certifications, trainings, influencingFactors, battalions, requests] = await Promise.all([
+  const [certifications, trainings, influencingFactors, battalions] = await Promise.all([
     listCertifications().then((rows) => rows.filter((c) => c.status !== "cancelled")),
     listTrainings(),
     listInfluencingFactors(),
     listBattalions(),
-    listRequests(),
   ]);
 
   const certItems: CalendarItem[] = await Promise.all(
@@ -42,27 +39,7 @@ export default async function CalendarPage() {
     )
   );
 
-  // Requests appear on their desired date. Skipped when there is no desired date (nothing
-  // to place), and once a request has produced a certification — or was rejected/closed —
-  // it stops showing so it never doubles up with the certification it created.
-  const battalionById = new Map(battalions.map((b) => [b.id, b]));
-  const requestItems: CalendarItem[] = requests
-    .filter(
-      (r) =>
-        r.desired_date &&
-        !["certification_opened", "rejected", "closed"].includes(r.status)
-    )
-    .map((r) => {
-      const battalion = battalionById.get(r.battalion_id);
-      return requestToCalendarItem(
-        { ...r, desired_date: r.desired_date as string },
-        battalion
-          ? [{ code: battalion.code, name: battalion.name, color_hex: battalion.color_hex }]
-          : []
-      );
-    });
-
-  const items = [...certItems, ...trainingItems, ...factorItems, ...requestItems];
+  const items = [...certItems, ...trainingItems, ...factorItems];
 
   return (
     <div className="space-y-4">

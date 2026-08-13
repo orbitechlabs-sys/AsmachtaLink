@@ -7,7 +7,7 @@ import { GraduationCap } from "lucide-react";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
 import type { CalendarItem } from "@/components/calendar/types";
 import { getWeekNumber, getHebrewWeekdayShort } from "@/lib/utils/dates";
-import { compareCalendarItems, usesDashedOutline } from "@/components/calendar/types";
+import { compareCalendarItems } from "@/components/calendar/types";
 import { cn } from "@/lib/utils";
 
 const DAY_MIN_WIDTH = 40;
@@ -152,7 +152,7 @@ export function GanttView({
                     "absolute top-1.5 h-7 flex items-center gap-1 px-2 text-white overflow-hidden",
                     isTrueStart ? "rounded-s-md" : "rounded-s-none",
                     isTrueEnd ? "rounded-e-md" : "rounded-e-none",
-                    usesDashedOutline(item.kind) &&
+                    item.kind === "training" &&
                       "outline outline-2 outline-dashed outline-white/70 -outline-offset-2"
                   )}
                   style={{

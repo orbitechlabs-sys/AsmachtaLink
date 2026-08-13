@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, GraduationCap } from "lucide-react";
+import { GraduationCap } from "lucide-react";
 import { CertificationStatusBadge } from "@/components/certifications/status-badge";
-import { usesDashedOutline, type CalendarItem } from "@/components/calendar/types";
+import type { CalendarItem } from "@/components/calendar/types";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
 import { cn } from "@/lib/utils";
 
@@ -14,13 +14,12 @@ const TRAINING_OUTLINE = "outline outline-2 outline-dashed outline-white/70 -out
 
 export function CertificationChip({ item }: { item: CalendarItem }) {
   const isTraining = item.kind === "training";
-  const isRequest = item.kind === "request";
   return (
     <Link
       href={item.href}
       className={cn(
         "block rounded px-1.5 py-1 text-white overflow-hidden shadow-sm hover:shadow-md transition-shadow",
-        usesDashedOutline(item.kind) && TRAINING_OUTLINE
+        isTraining && TRAINING_OUTLINE
       )}
       // Single-day events use the exact same color source as multi-day bars.
       style={{ backgroundColor: item.color || "var(--muted-foreground)" }}
@@ -44,7 +43,6 @@ export function CertificationChip({ item }: { item: CalendarItem }) {
         {isTraining && (
           <GraduationCap className="size-3 shrink-0" aria-label="הדרכה" />
         )}
-        {isRequest && <ClipboardList className="size-3 shrink-0" aria-label="דרישה" />}
         {/* Name + unit on a single line: the unit is smaller/lighter inline, and the
             whole line truncates with an ellipsis instead of wrapping onto a 2nd row.
             Matches the inline layout of the multi-day spanning bars. */}
@@ -61,13 +59,12 @@ export function CertificationChip({ item }: { item: CalendarItem }) {
 
 export function CertificationChipDetailed({ item }: { item: CalendarItem }) {
   const isTraining = item.kind === "training";
-  const isRequest = item.kind === "request";
   return (
     <Link
       href={item.href}
       className={cn(
         "block rounded-md border bg-card p-2 hover:shadow-md transition-shadow border-e-4",
-        usesDashedOutline(item.kind) && "border-dashed"
+        isTraining && "border-dashed"
       )}
       style={{ borderInlineEndColor: item.color ?? "var(--border)" }}
     >
@@ -76,20 +73,13 @@ export function CertificationChipDetailed({ item }: { item: CalendarItem }) {
           {isTraining && (
             <GraduationCap className="size-3.5 shrink-0 text-muted-foreground" aria-label="הדרכה" />
           )}
-          {isRequest && (
-            <ClipboardList className="size-3.5 shrink-0 text-muted-foreground" aria-label="דרישה" />
-          )}
           {item.name}
         </span>
         {item.kind === "certification" && item.status ? (
           <CertificationStatusBadge status={item.status} />
         ) : (
           <span className="text-[11px] text-muted-foreground shrink-0">
-            {item.kind === "influencing_factor"
-              ? "גורם משפיע"
-              : item.kind === "request"
-              ? "דרישה"
-              : "הדרכה"}
+            {item.kind === "influencing_factor" ? "גורם משפיע" : "הדרכה"}
           </span>
         )}
       </div>
