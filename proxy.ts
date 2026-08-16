@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 import { getUserById } from "@/lib/db/repositories/users";
+import {
+  BATTALION_SCOPED_HOME,
+  isApiAllowedForScopedRole,
+  isBattalionScopedRole,
+  isPathAllowedForScopedRole,
+  isWriteAllowedForBattalionEditor,
+} from "@/lib/auth/battalion-scope";
 
 /** Routes reachable without an authenticated session. */
 const PUBLIC_ROUTES = [
@@ -68,9 +75,24 @@ export async function proxy(request: NextRequest) {
       // Admin API is super-admin only.
       if (pathname.startsWith("/api/admin")) {
         if (role !== "super_admin") return forbidden();
+      } else if (isBattalionScopedRole(role) && !isApiAllowedForScopedRole(pathname)) {
+        // The APIs behind the sections a scoped role cannot see are refused outright —
+        // otherwise hiding the tab would only hide the page, not the data behind it.
+        return forbidden();
       } else if (WRITE_METHODS.has(request.method) && !allowAny) {
         // Viewers are read-only across all domain write endpoints.
-        if (!canEditData) return forbidden();
+        // A battalion-scoped editor is the one exception, and only for creating a
+        // request; every other write stays denied here, and the handlers' own
+        // `canEdit()` (false for scoped roles) denies them a second time.
+        if (
+          !canEditData &&
+          !(
+            role === "editor_battalion" &&
+            isWriteAllowedForBattalionEditor(pathname, request.method)
+          )
+        ) {
+          return forbidden();
+        }
       }
       return response;
     }
@@ -95,6 +117,13 @@ export async function proxy(request: NextRequest) {
       ) {
         const url = request.nextUrl.clone();
         url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+      // Battalion-scoped roles reach only their four sections (calendar, requests,
+      // battalions, reports) — hiding the nav items is not enough on its own.
+      if (isBattalionScopedRole(role) && !isPathAllowedForScopedRole(pathname)) {
+        const url = request.nextUrl.clone();
+        url.pathname = BATTALION_SCOPED_HOME;
         return NextResponse.redirect(url);
       }
     }

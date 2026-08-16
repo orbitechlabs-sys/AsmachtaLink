@@ -105,15 +105,33 @@ export type Role = "brigade" | `battalion:${string}`;
 
 // --- Real per-user authorization (Supabase auth id -> app role/status) ---
 
-export type UserRole = "super_admin" | "editor" | "viewer";
+/** `super_admin` / `editor` / `viewer` are GLOBAL (system-wide) and unchanged.
+ * `viewer_battalion` / `editor_battalion` are scoped to the user's `battalion_id`. */
+export type UserRole =
+  | "super_admin"
+  | "editor"
+  | "viewer"
+  | "viewer_battalion"
+  | "editor_battalion";
 
-export const USER_ROLES: UserRole[] = ["super_admin", "editor", "viewer"];
+export const USER_ROLES: UserRole[] = [
+  "super_admin",
+  "editor",
+  "viewer",
+  "viewer_battalion",
+  "editor_battalion",
+];
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   super_admin: "מנהל על",
   editor: "עורך",
   viewer: "צפייה בלבד",
+  viewer_battalion: "צפייה גדודי",
+  editor_battalion: "עריכה גדודי",
 };
+
+/** The two roles limited to a single battalion. Everything else is system-wide. */
+export const BATTALION_SCOPED_ROLES: UserRole[] = ["viewer_battalion", "editor_battalion"];
 
 export type UserStatus = "pending" | "approved" | "rejected";
 
@@ -131,6 +149,12 @@ export interface AppUser {
   full_name: string | null;
   role: UserRole;
   status: UserStatus;
+  /** Set only for the battalion-scoped roles; NULL for every global role. */
+  battalion_id: number | null;
+  /** Free text the user typed at signup. Indication for the admin only — NEVER
+   * consulted for authorization. */
+  requested_role_text: string | null;
+  requested_battalion_text: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_at: string;

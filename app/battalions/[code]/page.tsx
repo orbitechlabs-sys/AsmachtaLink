@@ -7,6 +7,7 @@ import { getCertificationById } from "@/lib/db/repositories/certifications";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
+import { getBattalionScope } from "@/lib/auth/scope";
 import { canManageCertifications, canEdit as canEditUser } from "@/lib/auth/permissions";
 import { RosterStatusBadge, RequestStatusBadge } from "@/components/certifications/status-badge";
 import { BattalionGapsBadges } from "@/components/requests/battalion-gaps-badges";
@@ -22,9 +23,16 @@ export default async function BattalionDetailPage({
   const battalion = await getBattalionByCode(code);
   if (!battalion) notFound();
 
+  // A battalion-scoped user may only open their own battalion — the URL is user-supplied,
+  // so hiding the other cards on the list page is not a boundary.
+  const scope = await getBattalionScope();
+  if (scope && scope.battalionId !== battalion.id) notFound();
+
   const roster = await listRosterForBattalion(battalion.id);
   const requests = await listRequests({ battalionCode: code });
-  const gapRows = await listGapRows();
+  // Scoped: the rows carry only this battalion's numbers, so the badges cannot ship
+  // another unit's gaps to the browser alongside them.
+  const gapRows = await listGapRows(scope?.battalionId);
   // `certification_id` is nullable since request-stage soldiers exist, but
   // listRosterForBattalion only returns certification-linked entries — the guard keeps
   // the types honest without changing behaviour.

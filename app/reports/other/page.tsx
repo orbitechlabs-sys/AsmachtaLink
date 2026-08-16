@@ -7,6 +7,7 @@ import {
   rosterCounts,
 } from "@/lib/db/repositories/reports";
 import { ExportExcelButton } from "@/components/reports/export-excel-button";
+import { getBattalionScope } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -40,29 +41,35 @@ function ReportSection({
 }
 
 export default async function OtherReportsPage() {
-  const byMonth = (await certificationsByMonth()) as { month: string; count: number }[];
-  const open = (await openForRegistration()) as {
+  // Battalion-scoped roles get every one of these reports filtered to their own battalion
+  // in SQL; for global roles `scopedId` is undefined and each query is the original,
+  // system-wide one.
+  const scope = await getBattalionScope();
+  const scopedId = scope?.battalionId;
+
+  const byMonth = (await certificationsByMonth(scopedId)) as { month: string; count: number }[];
+  const open = (await openForRegistration(scopedId)) as {
     id: number;
     name: string;
     location: string | null;
     start_date: string;
   }[];
-  const completed = (await completedCertifications()) as {
+  const completed = (await completedCertifications(scopedId)) as {
     id: number;
     name: string;
     location: string | null;
     start_date: string;
   }[];
-  const requestsByBattalion = (await openRequestsByBattalion()) as {
+  const requestsByBattalion = (await openRequestsByBattalion(scopedId)) as {
     battalion_name: string;
     count: number;
   }[];
-  const gaps = (await gapsByBattalion()) as {
+  const gaps = (await gapsByBattalion(scopedId)) as {
     battalion_name: string;
     total_requested: number;
     fulfilled: number;
   }[];
-  const counts = (await rosterCounts()) as {
+  const counts = (await rosterCounts(scopedId)) as {
     id: number;
     name: string;
     location: string | null;

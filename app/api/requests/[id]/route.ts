@@ -4,6 +4,7 @@ import { requestSchema } from "@/lib/validation/request";
 import { requireEditor } from "@/lib/auth/user";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { isBrigade } from "@/lib/auth/permissions";
+import { denyOutOfScope } from "@/lib/auth/scope";
 
 export async function GET(
   _request: Request,
@@ -12,6 +13,8 @@ export async function GET(
   const { id } = await params;
   const req = await getRequest(Number(id));
   if (!req) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const denied = await denyOutOfScope(req.battalion_id);
+  if (denied) return denied;
   return NextResponse.json(req);
 }
 

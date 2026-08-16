@@ -29,16 +29,26 @@ export async function ensureUser(input: {
   id: string;
   email: string;
   full_name?: string | null;
+  /** Free-text signup indications carried over from the auth user's metadata. Stored
+   * for the admin to read; never used for authorization. */
+  requested_role_text?: string | null;
+  requested_battalion_text?: string | null;
 }): Promise<AppUser> {
   const existing = await getUserById(input.id);
   if (existing) return existing;
 
   return withTransaction(async (client) => {
     const result = await execute(
-      `INSERT INTO users (id, email, full_name)
-         VALUES ($1, $2, $3)
+      `INSERT INTO users (id, email, full_name, requested_role_text, requested_battalion_text)
+         VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (id) DO NOTHING`,
-      [input.id, input.email, input.full_name ?? null],
+      [
+        input.id,
+        input.email,
+        input.full_name ?? null,
+        input.requested_role_text ?? null,
+        input.requested_battalion_text ?? null,
+      ],
       client
     );
 
@@ -64,21 +74,35 @@ export async function ensureUser(input: {
   });
 }
 
+/** Approves a pending user with a role. `battalionId` is required for the two
+ * battalion-scoped roles and must be null for every global role (the DB enforces both). */
 export async function approveUser(input: {
   id: string;
-  role: Extract<UserRole, "viewer" | "editor">;
+  role: Extract<UserRole, "viewer" | "editor" | "viewer_battalion" | "editor_battalion">;
+  battalionId?: number | null;
   approvedBy: string;
 }): Promise<void> {
   await execute(
     `UPDATE users
-        SET status = 'approved', role = $2, approved_by = $3, approved_at = NOW()
+        SET status = 'approved', role = $2, battalion_id = $3,
+            approved_by = $4, approved_at = NOW()
       WHERE id = $1`,
-    [input.id, input.role, input.approvedBy]
+    [input.id, input.role, input.battalionId ?? null, input.approvedBy]
   );
 }
 
-export async function updateUserRole(id: string, role: UserRole): Promise<void> {
-  await execute("UPDATE users SET role = $2 WHERE id = $1", [id, role]);
+/** Sets role and battalion together — they are one decision, and the DB constraint
+ * rejects any combination where a scoped role lacks a battalion (or vice versa). */
+export async function updateUserRole(
+  id: string,
+  role: UserRole,
+  battalionId?: number | null
+): Promise<void> {
+  await execute("UPDATE users SET role = $2, battalion_id = $3 WHERE id = $1", [
+    id,
+    role,
+    battalionId ?? null,
+  ]);
 }
 
 /**

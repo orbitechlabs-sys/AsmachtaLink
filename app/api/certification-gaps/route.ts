@@ -2,9 +2,16 @@ import { NextResponse } from "next/server";
 import { addGapRow, listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { canManageCertifications } from "@/lib/auth/permissions";
+import { requireApprovedUser } from "@/lib/auth/user";
+import { getBattalionScope } from "@/lib/auth/scope";
 
 export async function GET() {
-  return NextResponse.json(await listGapRows());
+  const gate = await requireApprovedUser();
+  if (gate instanceof NextResponse) return gate;
+
+  // Scoped roles get rows containing their own battalion's counts only.
+  const scope = await getBattalionScope();
+  return NextResponse.json(await listGapRows(scope?.battalionId));
 }
 
 export async function POST(request: Request) {

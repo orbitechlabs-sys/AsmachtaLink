@@ -43,10 +43,26 @@ export interface ExportCertification {
   reserve: ExportRosterEntry[];
 }
 
-export async function getExportData(from: string, to: string): Promise<ExportCertification[]> {
-  const [allCerts, battalions] = await Promise.all([listCertifications({ from, to }), listBattalions()]);
+/** `battalionCode` confines the export to one battalion (battalion-scoped roles).
+ * Omitted → every battalion, i.e. the original behaviour. */
+export async function getExportData(
+  from: string,
+  to: string,
+  battalionCode?: string
+): Promise<ExportCertification[]> {
+  const [allCerts, battalions] = await Promise.all([
+    listCertifications({ from, to, battalionCode }),
+    listBattalions(),
+  ]);
   const certs = allCerts.filter((c) => c.status !== "cancelled");
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+  // `battalionCode` picks the certifications; it must also narrow what is shown INSIDE
+  // each one. A certification a scoped battalion takes part in still carries every other
+  // battalion's allocation and named soldiers, and those must not reach its export.
+  const scopedBattalionId = battalionCode
+    ? battalions.find((b) => b.code === battalionCode)?.id ?? -1
+    : null;
+  const inScope = (id: number) => scopedBattalionId === null || id === scopedBattalionId;
 
   return Promise.all(certs.map(async (cert) => {
     const [quotas, roster, reserve, taxes, prerequisites] = await Promise.all([
@@ -60,7 +76,7 @@ export async function getExportData(from: string, to: string): Promise<ExportCer
     const groupByBattalion = new Map<number, ExportBattalionGroup>();
     for (const q of quotas) {
       const b = battalionMap.get(q.battalion_id);
-      if (!b) continue;
+      if (!b || !inScope(q.battalion_id)) continue;
       groupByBattalion.set(q.battalion_id, {
         battalion_id: q.battalion_id,
         battalion_name: b.name,
@@ -70,6 +86,7 @@ export async function getExportData(from: string, to: string): Promise<ExportCer
       });
     }
     for (const entry of roster) {
+      if (!inScope(entry.battalion_id)) continue;
       let group = groupByBattalion.get(entry.battalion_id);
       if (!group) {
         const b = battalionMap.get(entry.battalion_id);
@@ -91,6 +108,8 @@ export async function getExportData(from: string, to: string): Promise<ExportCer
       });
     }
 
+    const scopedRegistered = roster.filter((entry) => inScope(entry.battalion_id)).length;
+
     return {
       id: cert.id,
       name: cert.name,
@@ -100,13 +119,15 @@ export async function getExportData(from: string, to: string): Promise<ExportCer
       end_date: cert.end_date,
       status: cert.status,
       total_slots: cert.total_slots,
-      registered_count: cert.registered_count,
+      // Scoped: how many of THEIR soldiers are on it. The brigade-wide headcount would
+      // disclose the other battalions' participation by arithmetic.
+      registered_count: scopedBattalionId === null ? cert.registered_count : scopedRegistered,
       prerequisites: prerequisites.map((p) => p.description),
       taxes: taxes.map((t) => ({ role_name: t.role_name, is_fulfilled: t.is_fulfilled === 1 })),
       battalionGroups: Array.from(groupByBattalion.values()).sort((a, b) =>
         a.battalion_name.localeCompare(b.battalion_name)
       ),
-      reserve: reserve.map((entry) => ({
+      reserve: reserve.filter((entry) => inScope(entry.battalion_id)).map((entry) => ({
         full_name: entry.full_name,
         personal_number: entry.personal_number,
         phone: entry.phone,
@@ -139,13 +160,26 @@ export interface ExportTraining {
   sessions: ExportTrainingSession[];
 }
 
-export async function getTrainingExportData(from: string, to: string): Promise<ExportTraining[]> {
+/** `battalionCode` keeps only trainings that have a session with that battalion, and
+ * only those sessions. Omitted → unchanged behaviour. */
+export async function getTrainingExportData(
+  from: string,
+  to: string,
+  battalionCode?: string
+): Promise<ExportTraining[]> {
   const [trainings, battalions] = await Promise.all([listTrainings({ from, to }), listBattalions()]);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+  const scopedBattalionId = battalionCode
+    ? battalions.find((b) => b.code === battalionCode)?.id ?? -1
+    : null;
 
-  return Promise.all(
+  const rows = await Promise.all(
     trainings.map(async (training) => {
-      const sessions = await listSessionsForTraining(training.id);
+      const allSessions = await listSessionsForTraining(training.id);
+      const sessions =
+        scopedBattalionId === null
+          ? allSessions
+          : allSessions.filter((s) => s.battalion_id === scopedBattalionId);
       return {
         id: training.id,
         name: training.name,
@@ -169,4 +203,7 @@ export async function getTrainingExportData(from: string, to: string): Promise<E
       };
     })
   );
+
+  // A training with no session for the scoped battalion is not theirs to see.
+  return scopedBattalionId === null ? rows : rows.filter((t) => t.sessions.length > 0);
 }

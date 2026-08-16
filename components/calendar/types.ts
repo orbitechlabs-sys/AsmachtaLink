@@ -121,3 +121,10 @@ export function influencingFactorToCalendarItem(
     registration_open: 0,
   };
 }
+
+/** Narrows an item's battalion chips to a single battalion — used for the two
+ * battalion-scoped roles, whose calendar and gantt must not name the other units taking
+ * part. Global roles never call this, so their items keep every chip. */
+export function scopeCalendarItemToBattalion(item: CalendarItem, code: string): CalendarItem {
+  return { ...item, battalions: item.battalions.filter((b) => b.code === code) };
+}

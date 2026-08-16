@@ -5,6 +5,7 @@ import { requestSoldierSchema } from "@/lib/validation/request-soldier";
 import { requireApprovedUser, requireEditor } from "@/lib/auth/user";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { battalionCodeOf, isBrigade } from "@/lib/auth/permissions";
+import { denyOutOfScope } from "@/lib/auth/scope";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
 
 export async function GET(
@@ -14,6 +15,11 @@ export async function GET(
   const gate = await requireApprovedUser();
   if (gate instanceof NextResponse) return gate;
   const { id } = await params;
+  const req = await getRequest(Number(id));
+  if (!req) return NextResponse.json({ error: "not found" }, { status: 404 });
+  // Soldiers on another battalion's request are not theirs to read.
+  const denied = await denyOutOfScope(req.battalion_id);
+  if (denied) return denied;
   return NextResponse.json(await listByRequest(Number(id)));
 }
 

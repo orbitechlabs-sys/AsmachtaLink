@@ -15,6 +15,11 @@ export const signupSchema = z
     email,
     password: z.string().min(8, "הסיסמה חייבת להכיל לפחות 8 תווים"),
     confirmPassword: z.string().min(1, "יש לאשר את הסיסמה"),
+    // Free text, deliberately unvalidated and NOT checked against the battalion list:
+    // these are an indication for the admin who approves the account, and never
+    // determine the role or battalion the user receives.
+    requested_role_text: z.string().max(200, "הטקסט ארוך מדי").optional(),
+    requested_battalion_text: z.string().max(200, "הטקסט ארוך מדי").optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "הסיסמאות אינן תואמות",

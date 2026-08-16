@@ -6,6 +6,7 @@ import { listCertifications } from "@/lib/db/repositories/certifications";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
 import { canApproveRequests, canEdit } from "@/lib/auth/permissions";
+import { getBattalionScope } from "@/lib/auth/scope";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { RequestActionsPanel } from "@/components/requests/request-actions-panel";
 import { RequestSoldiersSection } from "@/components/requests/request-soldiers-section";
@@ -23,6 +24,11 @@ export default async function RequestDetailPage({
   const { id } = await params;
   const request = await getRequest(Number(id));
   if (!request) notFound();
+
+  // Another battalion's request is not theirs to open — the id in the URL is
+  // user-supplied, so filtering the list page is not a boundary.
+  const scope = await getBattalionScope();
+  if (scope && scope.battalionId !== request.battalion_id) notFound();
 
   const battalion = await getBattalionById(request.battalion_id);
   const role = await getCurrentRole();

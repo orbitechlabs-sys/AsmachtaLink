@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { listBattalions } from "@/lib/db/repositories/battalions";
+import { getBattalionScope } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function BattalionsPage() {
-  const battalions = await listBattalions();
+  // Battalion-scoped roles see only their own battalion; global roles see all.
+  const scope = await getBattalionScope();
+  const all = await listBattalions();
+  const battalions = scope ? all.filter((b) => b.id === scope.battalionId) : all;
 
   return (
     <div className="space-y-4">

@@ -21,7 +21,14 @@ export function SignupForm() {
     formState: { errors },
   } = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { full_name: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: {
+      full_name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      requested_role_text: "",
+      requested_battalion_text: "",
+    },
   });
 
   async function onSubmit(values: SignupFormValues) {
@@ -32,7 +39,13 @@ export function SignupForm() {
       password: values.password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: { full_name: values.full_name },
+        data: {
+          full_name: values.full_name,
+          // Carried into the users row by ensureUser on first sign-in. Indication for
+          // the approving admin only — never a source of authorization.
+          requested_role_text: values.requested_role_text?.trim() || null,
+          requested_battalion_text: values.requested_battalion_text?.trim() || null,
+        },
       },
     });
     setSubmitting(false);
@@ -94,6 +107,34 @@ export function SignupForm() {
         />
         {errors.email && (
           <p className="text-xs text-destructive">{errors.email.message}</p>
+        )}
+      </div>
+
+      {/* Free text only — no dropdown and no validation against the battalion list.
+          These reach the admin as an indication when approving the account. */}
+      <div className="space-y-1.5">
+        <Label htmlFor="requested_role_text">תפקיד</Label>
+        <Input
+          id="requested_role_text"
+          placeholder="לדוגמה: קצין הסמכות גדודי"
+          {...register("requested_role_text")}
+        />
+        {errors.requested_role_text && (
+          <p className="text-xs text-destructive">{errors.requested_role_text.message}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="requested_battalion_text">גדוד</Label>
+        <Input
+          id="requested_battalion_text"
+          placeholder="לדוגמה: גדוד 9308"
+          {...register("requested_battalion_text")}
+        />
+        {errors.requested_battalion_text && (
+          <p className="text-xs text-destructive">
+            {errors.requested_battalion_text.message}
+          </p>
         )}
       </div>
 

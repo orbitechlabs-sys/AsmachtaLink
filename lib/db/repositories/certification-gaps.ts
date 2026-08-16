@@ -11,13 +11,25 @@ export interface GapRow {
   total: number;
 }
 
-export async function listGapRows(): Promise<GapRow[]> {
+/**
+ * `battalionId` confines every per-battalion number to that battalion — the returned rows
+ * then carry no other unit's counts at all, which matters because these rows are
+ * serialized straight to the client and into the Excel/PDF exports. Omitted (global
+ * roles) → every battalion, i.e. the original behaviour.
+ */
+export async function listGapRows(battalionId?: number): Promise<GapRow[]> {
+  const scoped = battalionId !== undefined;
+  const scopeParams = scoped ? [battalionId] : [];
+
   const rows = await query<{ id: number; certification_name: string; sort_order: number }>(
     `SELECT id, certification_name, sort_order FROM certification_gap_rows ORDER BY sort_order, id`
   );
 
   const values = await query<{ row_id: number; battalion_id: number; gap_count: number; sent_count: number }>(
-    `SELECT row_id, battalion_id, gap_count, sent_count FROM certification_gap_values`
+    `SELECT row_id, battalion_id, gap_count, sent_count FROM certification_gap_values${
+      scoped ? " WHERE battalion_id = $1" : ""
+    }`,
+    scopeParams
   );
 
   // People currently registered/approved for a not-yet-completed certification for this
@@ -29,8 +41,11 @@ export async function listGapRows(): Promise<GapRow[]> {
        WHERE re.is_reserve = 0
          AND re.status IN ('registered', 'pending_approval', 'approved')
          AND c.gap_row_id IS NOT NULL
-         AND c.status NOT IN ('completed', 'cancelled')
-       GROUP BY c.gap_row_id, re.battalion_id`
+         AND c.status NOT IN ('completed', 'cancelled')${
+           scoped ? " AND re.battalion_id = $1" : ""
+         }
+       GROUP BY c.gap_row_id, re.battalion_id`,
+    scopeParams
   );
 
   const valuesByRow = new Map<number, Record<number, number>>();

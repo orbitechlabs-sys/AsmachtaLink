@@ -16,7 +16,11 @@ import { ChevronDown, LogOut, Shield } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Battalion } from "@/lib/types";
 
-export function RoleSwitcher() {
+/** `scopedBattalionName` is passed by the server for the two battalion-scoped roles. It
+ * turns the view selector into a fixed label for their own battalion: switching view is
+ * a brigade affordance, and offering it to a scoped user would suggest a reach they do
+ * not have (the server ignores the cookie for them either way). */
+export function RoleSwitcher({ scopedBattalionName }: { scopedBattalionName?: string | null }) {
   const router = useRouter();
   const { role, setRole } = useRole();
   const [battalions, setBattalions] = useState<Battalion[]>([]);
@@ -36,7 +40,33 @@ export function RoleSwitcher() {
   }, []);
 
   const currentBattalion = battalions.find((b) => `battalion:${b.code}` === role);
-  const label = role === "brigade" ? "מטה חטיבה" : currentBattalion?.name ?? role;
+  const label = scopedBattalionName ?? (role === "brigade" ? "מטה חטיבה" : currentBattalion?.name ?? role);
+
+  // Scoped roles: their own battalion, plus logout. No other view to switch to.
+  if (scopedBattalionName) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2 font-semibold">
+            <Shield className="size-4 text-primary" />
+            {label}
+            <ChevronDown className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>{label}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="text-destructive focus:text-destructive"
+          >
+            <LogOut className="size-4" />
+            התנתקות
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   return (
     <DropdownMenu>

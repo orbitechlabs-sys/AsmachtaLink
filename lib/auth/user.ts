@@ -20,6 +20,12 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     id: user.id,
     email: user.email ?? "",
     full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
+    // Free text captured at signup. Persisted on first sight as an indication for the
+    // admin — it never influences the role or battalion the user actually gets.
+    requested_role_text:
+      (user.user_metadata?.requested_role_text as string | undefined) ?? null,
+    requested_battalion_text:
+      (user.user_metadata?.requested_battalion_text as string | undefined) ?? null,
   });
 }
 

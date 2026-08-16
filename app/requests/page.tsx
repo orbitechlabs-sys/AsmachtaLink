@@ -4,7 +4,14 @@ import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
-import { battalionCodeOf, canManageCertifications, canEdit, isBrigade } from "@/lib/auth/permissions";
+import {
+  battalionCodeOf,
+  canManageCertifications,
+  canEdit,
+  canEditBattalion,
+  isBrigade,
+} from "@/lib/auth/permissions";
+import { getBattalionScope } from "@/lib/auth/scope";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { CertificationGapsTable } from "@/components/requests/certification-gaps-table";
 import { RequestsExportActions, REQUESTS_PAGE_CONTENT_ID } from "@/components/requests/requests-export-actions";
@@ -18,14 +25,33 @@ export const dynamic = "force-dynamic";
 export default async function RequestsPage() {
   const role = await getCurrentRole();
   const me = await getCurrentUser();
-  const canEditData = canEdit(me);
-  const battalionCode = isBrigade(role) ? undefined : battalionCodeOf(role) ?? undefined;
+  // A battalion-scoped role may edit (create requests) only within its own battalion;
+  // global roles keep the existing canEdit() behaviour untouched.
+  const scope = await getBattalionScope();
+  const canEditData = scope ? canEditBattalion(me, scope.battalionId) : canEdit(me);
+  // The scope comes from the authenticated user's row, so it overrides the cookie-based
+  // view selector rather than trusting it.
+  const battalionCode = scope
+    ? scope.code
+    : isBrigade(role)
+    ? undefined
+    : battalionCodeOf(role) ?? undefined;
   const requests = await listRequests({ battalionCode });
-  const battalions = await listBattalions();
+  const allBattalions = await listBattalions();
+  // The map is handed to a client component (the export actions), so under a scope it
+  // must hold their battalion only — otherwise every unit's name ships with the page.
+  const battalions = scope
+    ? allBattalions.filter((b) => b.id === scope.battalionId)
+    : allBattalions;
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
-  const gapRows = await listGapRows();
+  // "פערי הסמכות ביחס לשיבוץ": one column per battalion. A scoped role gets exactly one
+  // column — its own — and rows that carry no other battalion's numbers, so the other
+  // units are absent from the payload and from the Excel/PDF exports, not merely hidden.
+  const gapRows = await listGapRows(scope?.battalionId);
   const gapBattalionCodes = ["5030", "8207", "9308", "6228", "gdsm", "hq"];
-  const gapBattalions = battalions.filter((b) => gapBattalionCodes.includes(b.code));
+  const gapBattalions = scope
+    ? battalions.filter((b) => b.id === scope.battalionId)
+    : battalions.filter((b) => gapBattalionCodes.includes(b.code));
 
   return (
     <div className="space-y-6">
@@ -43,10 +69,12 @@ export default async function RequestsPage() {
             <img src="/logo228.png" alt="חטיבה 228" className="h-10 w-auto" />
             <h1 className="text-2xl font-bold">פערי הסמכות ביחס לשיבוץ</h1>
           </div>
+          {/* Gap counts are brigade-owned figures: a scoped role reads them, never edits
+              them (the write endpoint refuses them anyway — their one write is a request). */}
           <CertificationGapsTable
             rows={gapRows}
             battalions={gapBattalions}
-            canEdit={canManageCertifications(role) && canEditData}
+            canEdit={!scope && canManageCertifications(role) && canEditData}
           />
         </div>
 

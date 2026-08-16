@@ -8,31 +8,30 @@ import { Menu, X } from "lucide-react";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAuthRoute } from "@/lib/auth/routes";
-import { useCurrentUser } from "@/lib/auth/use-current-user";
-import { isSuperAdmin } from "@/lib/auth/permissions";
+import type { NavLink } from "@/lib/auth/nav";
 import { cn } from "@/lib/utils";
 
-const LINKS = [
-  { href: "/calendar", label: "לוח שנה" },
-  { href: "/trainings", label: "הדרכות" },
-  { href: "/certifications", label: "הסמכות" },
-  { href: "/requests", label: "דרישות גדודים" },
-  { href: "/templates", label: "בנק הסמכות" },
-  { href: "/battalions", label: "גדודים" },
-  { href: "/reports", label: "דוחות" },
-];
-
-const ADMIN_LINK = { href: "/admin/permissions", label: "ניהול הרשאות" };
-
-export function MainNav() {
+/**
+ * `links` is resolved on the server from the authenticated user's row (see
+ * `navLinksFor`) and passed in as a prop. It is deliberately NOT derived here from a
+ * client fetch: doing so rendered every tab — including the forbidden ones — until
+ * /api/me came back.
+ *
+ * `scopedBattalionName` is set only for the battalion-scoped roles; it pins the view
+ * selector to their own battalion instead of offering the whole brigade.
+ */
+export function MainNav({
+  links,
+  scopedBattalionName,
+}: {
+  links: NavLink[];
+  scopedBattalionName?: string | null;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const { user } = useCurrentUser();
 
   // Auth pages render a clean centered card with no app chrome.
   if (isAuthRoute(pathname)) return null;
-
-  const links = isSuperAdmin(user) ? [...LINKS, ADMIN_LINK] : LINKS;
 
   return (
     <header className="bg-card relative border-b-2 border-primary/20">
@@ -71,7 +70,7 @@ export function MainNav() {
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
-          <RoleSwitcher />
+          <RoleSwitcher scopedBattalionName={scopedBattalionName} />
           <NotificationBell />
         </div>
 
@@ -100,7 +99,7 @@ export function MainNav() {
             </Link>
           ))}
           <div className="flex items-center gap-2 pt-2 border-t mt-1">
-            <RoleSwitcher />
+            <RoleSwitcher scopedBattalionName={scopedBattalionName} />
             <NotificationBell />
           </div>
         </div>

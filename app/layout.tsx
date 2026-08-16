@@ -8,7 +8,11 @@ import { ChromeGate } from "@/components/layout/chrome-gate";
 import { Toaster } from "@/components/ui/sonner";
 import { RoleProvider } from "@/lib/auth/role-context";
 import { getCurrentRole } from "@/lib/auth/current-role";
+import { getCurrentUser } from "@/lib/auth/user";
 import { isBrigade } from "@/lib/auth/permissions";
+import { navLinksFor } from "@/lib/auth/nav";
+import { scopedBattalionIdOf } from "@/lib/auth/battalion-scope";
+import { getBattalionById } from "@/lib/db/repositories/battalions";
 
 const heebo = Heebo({
   variable: "--font-sans",
@@ -25,7 +29,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const role = await getCurrentRole();
+  const [role, me] = await Promise.all([getCurrentRole(), getCurrentUser()]);
+
+  // The visible tabs come from the authenticated user's real row, resolved here on the
+  // server — never from the `active_role` cookie and never from a client fetch, which
+  // would paint the full tab list first and only then hide the forbidden ones.
+  const navLinks = navLinksFor(me);
+  const scopedBattalionId = scopedBattalionIdOf(me);
+  const scopedBattalion =
+    scopedBattalionId === null ? null : (await getBattalionById(scopedBattalionId)) ?? null;
 
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} h-full antialiased`}>
@@ -42,8 +54,10 @@ export default async function RootLayout({
             column order inside <Tabs>. */}
         <Direction.DirectionProvider dir="rtl">
           <RoleProvider>
-            <MainNav />
-            {isBrigade(role) && (
+            <MainNav links={navLinks} scopedBattalionName={scopedBattalion?.name ?? null} />
+            {/* The open-tasks bar is a brigade-wide worklist across every battalion, so a
+                battalion-scoped user never gets it. */}
+            {isBrigade(role) && scopedBattalionId === null && (
               <ChromeGate>
                 <OpenTasksBar />
               </ChromeGate>

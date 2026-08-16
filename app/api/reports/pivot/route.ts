@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { countSoldiersByBattalion } from "@/lib/db/repositories/certification-pivot";
 import { pivotQuerySchema } from "@/lib/validation/pivot";
 import { requireApprovedUser } from "@/lib/auth/user";
+import { getBattalionScope } from "@/lib/auth/scope";
 
 /** Per-battalion soldier counts for the certification-pivot widgets.
  * POST (not GET) because the payload is two id arrays plus a range. */
@@ -17,5 +18,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  return NextResponse.json(await countSoldiersByBattalion(parsed.data));
+  // A battalion-scoped role may only chart its own battalion, whatever the payload asks
+  // for, so the battalion list is clamped rather than trusted. Clamping (not rejecting)
+  // means a shared saved widget that names several battalions still renders — as their
+  // own column alone. Global roles are unaffected.
+  const scope = await getBattalionScope();
+  const filters = scope
+    ? {
+        ...parsed.data,
+        battalionIds: parsed.data.battalionIds.filter((id) => id === scope.battalionId),
+      }
+    : parsed.data;
+
+  return NextResponse.json(await countSoldiersByBattalion(filters));
 }
