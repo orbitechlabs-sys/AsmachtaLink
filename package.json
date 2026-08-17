@@ -11,6 +11,7 @@
     "seed:templates": "tsx scripts/seed-template-bank.ts",
     "db:migrate": "tsx scripts/migrate-postgres.ts",
     "db:import-sqlite": "tsx scripts/migrate-from-sqlite.ts",
+    "db:backup": "tsx scripts/backup-db.ts",
     "db:restore": "tsx scripts/restore-backup.ts"
   },
   "dependencies": {
