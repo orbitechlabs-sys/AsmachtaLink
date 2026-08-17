@@ -11,21 +11,20 @@ import {
   certificationToCalendarItem,
   trainingToCalendarItem,
   influencingFactorToCalendarItem,
-  scopeCalendarItemToBattalion,
   type CalendarItem,
 } from "@/components/calendar/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function CalendarPage() {
-  // Battalion-scoped roles see only their own battalion's items; global roles are
-  // unscoped (scope === null) and keep the full calendar exactly as before.
+  // The calendar is a brigade-wide status view: EVERY role, the two battalion-scoped ones
+  // included, sees every certification, training and influencing factor. Narrowing to a
+  // single unit is what the optional unit filter in the toolbar is for. The scope below is
+  // therefore used for links only — never to filter the data.
   const scope = await getBattalionScope();
 
   const [certifications, trainings, influencingFactors, battalions] = await Promise.all([
-    listCertifications(scope ? { battalionCode: scope.code } : {}).then((rows) =>
-      rows.filter((c) => c.status !== "cancelled")
-    ),
+    listCertifications().then((rows) => rows.filter((c) => c.status !== "cancelled")),
     listTrainings(),
     listInfluencingFactors(),
     listBattalions(),
@@ -37,42 +36,29 @@ export default async function CalendarPage() {
     )
   );
 
-  // Trainings carry no battalion column — their units come from their sessions — so they
-  // are filtered here, after their battalion refs are resolved.
-  const allTrainingItems: CalendarItem[] = await Promise.all(
+  const trainingItems: CalendarItem[] = await Promise.all(
     trainings.map(async (t) => trainingToCalendarItem(t, await getTrainingBattalions(t.id)))
   );
-  const trainingItems = scope
-    ? allTrainingItems.filter((t) => t.battalions.some((b) => b.code === scope.code))
-    : allTrainingItems;
 
-  const allFactorItems: CalendarItem[] = await Promise.all(
+  const factorItems: CalendarItem[] = await Promise.all(
     influencingFactors.map(async (f) =>
       influencingFactorToCalendarItem(f, await getInfluencingFactorBattalions(f.id))
     )
   );
-  // A factor with no battalions attached is brigade-wide and concerns everyone; one that
-  // names battalions is shown only to the units it names.
-  const factorItems = scope
-    ? allFactorItems.filter(
-        (f) => f.battalions.length === 0 || f.battalions.some((b) => b.code === scope.code)
-      )
-    : allFactorItems;
 
-  // Which other units are on a course is itself another battalion's data, so a scoped
-  // user's bars are labelled with their own battalion only.
+  // A scoped role cannot open /certifications/[id] (that section is not theirs), so their
+  // certification bars point at the same certification seen through their own battalion,
+  // under גדודים — where their allocation and their soldiers live.
   const items = [...certItems, ...trainingItems, ...factorItems].map((item) =>
-    scope ? scopeCalendarItemToBattalion(item, scope.code) : item
+    scope && item.kind === "certification"
+      ? { ...item, href: `/battalions/${scope.code}/certifications/${item.id}` }
+      : item
   );
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">לוח שנה</h1>
-      {/* The unit filter offers only the scoped user's own battalion. */}
-      <CalendarClient
-        items={items}
-        battalions={scope ? battalions.filter((b) => b.id === scope.battalionId) : battalions}
-      />
+      <CalendarClient items={items} battalions={battalions} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/user";
-import { getScopedBattalionId } from "@/lib/auth/permissions";
+import { canEditBattalion, getScopedBattalionId } from "@/lib/auth/permissions";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
 import type { AppUser, Battalion } from "@/lib/types";
 
@@ -58,4 +58,40 @@ export async function denyOutOfScope(battalionId: number): Promise<NextResponse 
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   return null;
+}
+
+export interface BattalionEditorContext {
+  user: AppUser;
+  battalion: Battalion;
+  /** `battalion:CODE`, for the audit trail — which battalion the write was made for. */
+  changedByRole: string;
+}
+
+/**
+ * Guard for a write that belongs to one battalion (a soldier on a certification):
+ *
+ *   const gate = await requireBattalionEditor(battalionId);
+ *   if (gate instanceof NextResponse) return gate;
+ *
+ * Refuses a battalion-scoped caller aiming at another battalion (404), and anyone who may
+ * not edit that battalion (403) — which includes `viewer_battalion`, who is read-only.
+ * Global editors/admins pass for any battalion, so their reach is unchanged.
+ */
+export async function requireBattalionEditor(
+  battalionId: number
+): Promise<BattalionEditorContext | NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const denied = await denyOutOfScope(battalionId);
+  if (denied) return denied;
+
+  if (!canEditBattalion(user, battalionId)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const battalion = await getBattalionById(battalionId);
+  if (!battalion) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  return { user, battalion, changedByRole: `battalion:${battalion.code}` };
 }

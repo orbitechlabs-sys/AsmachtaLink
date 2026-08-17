@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const REPORT_LINKS = [
   { href: "/reports", label: "סיכום לפי טווח תאריכים" },
+  { href: "/reports/battalion-roster", label: "חיילים לפי הסמכה וגדוד" },
   { href: "/reports/other", label: "דוחות נוספים" },
   { href: "/reports/pivot", label: "פילוח הסמכות" },
 ];

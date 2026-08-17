@@ -1,6 +1,7 @@
 import { execute, query, queryOne, withTransaction } from "@/lib/db/client";
 import type { PoolClient } from "pg";
 import type { RosterEntry, RosterStatus } from "@/lib/types";
+import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 
@@ -25,6 +26,20 @@ export async function listRosterForBattalion(battalionId: number): Promise<Roste
   return query<RosterEntry>(
     "SELECT * FROM roster_entries WHERE battalion_id = $1 AND certification_id IS NOT NULL ORDER BY created_at DESC",
     [battalionId]
+  );
+}
+
+/** One battalion's soldiers on one certification — reserve included, so the battalion
+ * sees its whole list. Never returns another battalion's rows. */
+export async function listRosterForBattalionCertification(
+  certificationId: number,
+  battalionId: number
+): Promise<RosterEntry[]> {
+  return query<RosterEntry>(
+    `SELECT * FROM roster_entries
+      WHERE certification_id = $1 AND battalion_id = $2
+      ORDER BY is_reserve ASC, created_at ASC, id ASC`,
+    [certificationId, battalionId]
   );
 }
 
@@ -111,49 +126,180 @@ export interface RosterEntryInput {
 }
 
 export async function addRosterEntry(input: RosterEntryInput, changedByRole: string): Promise<number> {
-  return withTransaction(async (client) => {
-    const result = await execute(
-      `INSERT INTO roster_entries
+  return withTransaction((client) => insertRosterEntry(input, changedByRole, client));
+}
+
+/** The insert itself, on a caller-supplied transaction. Extracted so the quota-checked
+ * battalion path below can run the check and the insert under one transaction. */
+async function insertRosterEntry(
+  input: RosterEntryInput,
+  changedByRole: string,
+  client: PoolClient
+): Promise<number> {
+  const result = await execute(
+    `INSERT INTO roster_entries
           (certification_id, battalion_id, full_name, personal_number, company_platoon, phone,
            commander_name, commander_phone, has_prior_certification, prior_certification_details,
            meets_prerequisite, notes, is_reserve)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id`,
-      [
-        input.certification_id,
-        input.battalion_id,
-        input.full_name,
-        input.personal_number,
-        input.company_platoon ?? null,
-        input.phone ?? null,
-        input.commander_name ?? null,
-        input.commander_phone ?? null,
-        input.has_prior_certification ? 1 : 0,
-        input.prior_certification_details ?? null,
-        input.meets_prerequisite === undefined || input.meets_prerequisite === null
-          ? null
-          : input.meets_prerequisite
-          ? 1
-          : 0,
-        input.notes ?? null,
-        input.is_reserve ? 1 : 0,
-      ],
+    [
+      input.certification_id,
+      input.battalion_id,
+      input.full_name,
+      input.personal_number,
+      input.company_platoon ?? null,
+      input.phone ?? null,
+      input.commander_name ?? null,
+      input.commander_phone ?? null,
+      input.has_prior_certification ? 1 : 0,
+      input.prior_certification_details ?? null,
+      input.meets_prerequisite === undefined || input.meets_prerequisite === null
+        ? null
+        : input.meets_prerequisite
+        ? 1
+        : 0,
+      input.notes ?? null,
+      input.is_reserve ? 1 : 0,
+    ],
+    client
+  );
+  const id = (result.rows[0] as { id: number }).id;
+  await recordStatusChange("roster_entry", id, null, "registered", changedByRole, undefined, client);
+
+  const cert = await queryOne<{ name: string }>(
+    "SELECT name FROM certifications WHERE id = $1", [input.certification_id], client
+  );
+  await createNotification({
+    type: "soldier_added",
+    target_role: "brigade",
+    entity_type: "roster_entry",
+    entity_id: id,
+    message: `${input.full_name} נרשם להסמכה "${cert?.name ?? ""}"`,
+  }, client);
+  return id;
+}
+
+// --- Battalion-scoped registration against an allocation ---------------------------
+// A battalion editor registers its own soldiers on a certification, bounded by the number
+// of slots the brigade allocated to that battalion (`certification_battalion_quotas`).
+// Reserve (עתודה) soldiers sit outside the allocation and are not counted against it —
+// the same rule the certification's own slot count already uses.
+
+/** How much of `battalionId`'s allocation on `certificationId` is currently taken.
+ * Only non-reserve entries in an active status occupy a slot, mirroring the
+ * certification-level count in `withCounts()`. */
+export async function countBattalionQuotaUsage(
+  certificationId: number,
+  battalionId: number,
+  client?: PoolClient
+): Promise<number> {
+  const row = await queryOne<{ c: number }>(
+    `SELECT COUNT(*)::int as c FROM roster_entries
+      WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 0
+        AND status = ANY($3::text[])`,
+    [certificationId, battalionId, ACTIVE_ROSTER_STATUSES],
+    client
+  );
+  return row?.c ?? 0;
+}
+
+export interface BattalionQuotaUsage {
+  /** Slots allocated to this battalion, or null when it has no allocation at all. */
+  allocated: number | null;
+  /** Non-reserve soldiers occupying the allocation. */
+  used: number;
+  /** Reserve soldiers — listed, never counted against the allocation. */
+  reserve: number;
+  /** allocated − used, floored at 0. null when there is no allocation. */
+  remaining: number | null;
+  registration_lock_at: string | null;
+  /** True once the registration deadline on the allocation has passed. */
+  locked: boolean;
+}
+
+/** The battalion's allocation on a certification and how much of it is used. Drives both
+ * the UI counter and the server-side limit. */
+export async function getBattalionQuotaUsage(
+  certificationId: number,
+  battalionId: number
+): Promise<BattalionQuotaUsage> {
+  const [quota, used, reserveRow] = await Promise.all([
+    queryOne<{ allocated_slots: number; registration_lock_at: string | null }>(
+      `SELECT allocated_slots, registration_lock_at FROM certification_battalion_quotas
+        WHERE certification_id = $1 AND battalion_id = $2`,
+      [certificationId, battalionId]
+    ),
+    countBattalionQuotaUsage(certificationId, battalionId),
+    queryOne<{ c: number }>(
+      `SELECT COUNT(*)::int as c FROM roster_entries
+        WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 1`,
+      [certificationId, battalionId]
+    ),
+  ]);
+  const allocated = quota?.allocated_slots ?? null;
+  const lockAt = quota?.registration_lock_at ?? null;
+  return {
+    allocated,
+    used,
+    reserve: reserveRow?.c ?? 0,
+    remaining: allocated === null ? null : Math.max(allocated - used, 0),
+    registration_lock_at: lockAt,
+    locked: !!lockAt && new Date(lockAt).getTime() < Date.now(),
+  };
+}
+
+/** Why a quota-bounded registration was refused. The API maps each to a Hebrew message. */
+export type QuotaRefusal = "no_quota" | "quota_exceeded" | "registration_locked";
+
+export type BattalionRosterResult =
+  | { ok: true; id: number }
+  | { ok: false; reason: QuotaRefusal; allocated?: number; used?: number };
+
+/**
+ * Adds one soldier of `input.battalion_id` to a certification, refusing when the
+ * battalion has no allocation, when its allocation is already full, or when the
+ * registration deadline on that allocation has passed.
+ *
+ * The check and the insert share one transaction and the allocation row is taken
+ * `FOR UPDATE`, so two simultaneous registrations cannot both read the same last free
+ * slot and both take it.
+ */
+export async function addBattalionRosterEntry(
+  input: RosterEntryInput,
+  changedByRole: string
+): Promise<BattalionRosterResult> {
+  return withTransaction<BattalionRosterResult>(async (client) => {
+    const quota = await queryOne<{ allocated_slots: number; registration_lock_at: string | null }>(
+      `SELECT allocated_slots, registration_lock_at FROM certification_battalion_quotas
+        WHERE certification_id = $1 AND battalion_id = $2
+        FOR UPDATE`,
+      [input.certification_id, input.battalion_id],
       client
     );
-    const id = (result.rows[0] as { id: number }).id;
-    await recordStatusChange("roster_entry", id, null, "registered", changedByRole, undefined, client);
-
-    const cert = await queryOne<{ name: string }>(
-      "SELECT name FROM certifications WHERE id = $1", [input.certification_id], client
-    );
-    await createNotification({
-      type: "soldier_added",
-      target_role: "brigade",
-      entity_type: "roster_entry",
-      entity_id: id,
-      message: `${input.full_name} נרשם להסמכה "${cert?.name ?? ""}"`,
-    }, client);
-    return id;
+    if (!quota) return { ok: false, reason: "no_quota" };
+    if (
+      quota.registration_lock_at &&
+      new Date(quota.registration_lock_at).getTime() < Date.now()
+    ) {
+      return { ok: false, reason: "registration_locked" };
+    }
+    if (!input.is_reserve) {
+      const used = await countBattalionQuotaUsage(
+        input.certification_id,
+        input.battalion_id,
+        client
+      );
+      if (used + 1 > quota.allocated_slots) {
+        return {
+          ok: false,
+          reason: "quota_exceeded",
+          allocated: quota.allocated_slots,
+          used,
+        };
+      }
+    }
+    return { ok: true, id: await insertRosterEntry(input, changedByRole, client) };
   });
 }
 

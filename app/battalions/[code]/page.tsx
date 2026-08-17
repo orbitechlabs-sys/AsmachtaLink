@@ -5,12 +5,14 @@ import { listRosterForBattalion } from "@/lib/db/repositories/roster";
 import { listRequests } from "@/lib/db/repositories/requests";
 import { getCertificationById } from "@/lib/db/repositories/certifications";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
+import { getBattalionSummary } from "@/lib/db/repositories/battalion-summary";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
 import { getBattalionScope } from "@/lib/auth/scope";
 import { canManageCertifications, canEdit as canEditUser } from "@/lib/auth/permissions";
 import { RosterStatusBadge, RequestStatusBadge } from "@/components/certifications/status-badge";
 import { BattalionGapsBadges } from "@/components/requests/battalion-gaps-badges";
+import { BattalionSummary } from "@/components/battalions/battalion-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,14 @@ export default async function BattalionDetailPage({
 
   const roster = await listRosterForBattalion(battalion.id);
   const requests = await listRequests({ battalionCode: code });
+  // Every figure in the summary is derived for this battalion alone.
+  const summary = await getBattalionSummary(battalion.id);
+  // A scoped user cannot open the הסמכות section, so their certification links go to this
+  // battalion's own view of the certification; global roles keep the full page.
+  const certificationHref = (certificationId: number) =>
+    scope
+      ? `/battalions/${battalion.code}/certifications/${certificationId}`
+      : `/certifications/${certificationId}`;
   // Scoped: the rows carry only this battalion's numbers, so the badges cannot ship
   // another unit's gaps to the browser alongside them.
   const gapRows = await listGapRows(scope?.battalionId);
@@ -51,6 +61,8 @@ export default async function BattalionDetailPage({
       <h1 className="text-2xl font-bold" style={{ color: battalion.color_hex }}>
         {battalion.name}
       </h1>
+
+      <BattalionSummary summary={summary} certificationHref={certificationHref} />
 
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">פערי הסמכות</h2>
@@ -79,7 +91,7 @@ export default async function BattalionDetailPage({
           return (
             <Link
               key={entry.id}
-              href={`/certifications/${entry.certification_id}`}
+              href={certificationHref(entry.certification_id!)}
               className="block border rounded-md p-2 text-sm hover:shadow-sm"
             >
               <div className="flex items-center justify-between">

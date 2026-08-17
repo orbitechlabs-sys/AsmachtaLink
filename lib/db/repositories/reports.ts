@@ -1,4 +1,5 @@
 import { query } from "@/lib/db/client";
+import type { CertificationStatus, RosterStatus } from "@/lib/types";
 
 // Every function here takes an optional `battalionId`. It is supplied only for the two
 // battalion-scoped roles (see getBattalionScope); when it is undefined the query is the
@@ -86,6 +87,79 @@ export async function gapsByBattalion(battalionId?: number) {
        WHERE r.status != 'closed'${scoped ? " AND b.id = $1" : ""}
        GROUP BY b.id ORDER BY b.name`,
     scoped ? [battalionId] : []
+  );
+}
+
+/** One soldier on one certification — the unit of the "מי יוצא לאיזו הסמכה" report. */
+export interface BattalionRosterReportRow {
+  battalion_id: number;
+  battalion_name: string;
+  battalion_color: string;
+  certification_id: number;
+  certification_name: string;
+  location: string | null;
+  start_date: string;
+  end_date: string | null;
+  certification_status: CertificationStatus;
+  full_name: string;
+  personal_number: string;
+  company_platoon: string | null;
+  phone: string | null;
+  status: RosterStatus;
+  is_reserve: number;
+}
+
+export interface BattalionRosterReportFilters {
+  /** Forced to the caller's own battalion for the two scoped roles; a free, optional
+   * filter for the global roles (undefined = every battalion). */
+  battalionId?: number;
+  from?: string;
+  to?: string;
+}
+
+/**
+ * Which soldiers are going out to which certification. Rows are the join of a roster
+ * entry, its certification and its battalion; request-stage soldiers (no certification
+ * yet) and cancelled certifications are excluded.
+ */
+export async function battalionRosterReport(
+  filters: BattalionRosterReportFilters = {}
+): Promise<BattalionRosterReportRow[]> {
+  const conditions = [
+    "re.certification_id IS NOT NULL",
+    "c.status != 'cancelled'",
+  ];
+  const params: (string | number)[] = [];
+
+  if (filters.battalionId !== undefined) {
+    conditions.push(`re.battalion_id = $${params.length + 1}`);
+    params.push(filters.battalionId);
+  }
+  if (filters.from) {
+    conditions.push(
+      `(c.end_date >= $${params.length + 1} OR (c.end_date IS NULL AND c.start_date >= $${
+        params.length + 2
+      }))`
+    );
+    params.push(filters.from, filters.from);
+  }
+  if (filters.to) {
+    conditions.push(`c.start_date <= $${params.length + 1}`);
+    params.push(filters.to);
+  }
+
+  return query<BattalionRosterReportRow>(
+    `SELECT b.id as battalion_id, b.name as battalion_name, b.color_hex as battalion_color,
+            c.id as certification_id, c.name as certification_name, c.location,
+            c.start_date, c.end_date, c.status as certification_status,
+            re.full_name, re.personal_number, re.company_platoon, re.phone,
+            re.status, re.is_reserve
+       FROM roster_entries re
+       JOIN certifications c ON c.id = re.certification_id
+       JOIN battalions b ON b.id = re.battalion_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY c.start_date DESC, c.id DESC, b.name, re.is_reserve, re.full_name`,
+    params
   );
 }
 

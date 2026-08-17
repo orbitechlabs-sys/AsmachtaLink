@@ -116,7 +116,10 @@ export default async function RequestsPage() {
                   {new Date(r.created_at).toLocaleDateString("he-IL")}
                 </p>
               </Link>
-              {canManageCertifications(role) && canEditData && (
+              {/* Deleting a request is a brigade action. A scoped editor's one write is
+                  SUBMITTING a request for their own battalion — and `role` here comes from
+                  the view-selector cookie, so it cannot be part of that decision. */}
+              {!scope && canManageCertifications(role) && canEditData && (
                 <div className="absolute top-1.5 left-1.5 no-print">
                   <DeleteRequestButton
                     requestId={r.id}

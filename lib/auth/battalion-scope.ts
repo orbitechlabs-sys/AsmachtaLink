@@ -72,10 +72,22 @@ export function isApiAllowedForScopedRole(pathname: string): boolean {
   return BATTALION_SCOPED_API_PREFIXES.some((p) => matches(pathname, p));
 }
 
-/** Scoped users may create requests for their own battalion — that is their only write.
+/**
+ * The battalion-scoped roster endpoints:
+ * `/api/battalions/{id}/certifications/{certId}/roster[/{entryId}]`. Each one takes the
+ * battalion from the path, refuses a caller confined to a different battalion, and bounds
+ * an addition by that battalion's allocation.
+ */
+const BATTALION_ROSTER_WRITE = /^\/api\/battalions\/\d+\/certifications\/\d+\/roster(\/\d+)?$/;
+
+const ROSTER_WRITE_METHODS = ["POST", "PATCH", "DELETE"];
+
+/** The two writes a battalion editor may perform: a request for their own battalion, and
+ * managing their own battalion's soldiers on a certification within its allocation.
  * Everything else stays denied by `canEdit()` inside the individual handlers. */
 export function isWriteAllowedForBattalionEditor(pathname: string, method: string): boolean {
-  return method === "POST" && pathname === "/api/requests";
+  if (method === "POST" && pathname === "/api/requests") return true;
+  return ROSTER_WRITE_METHODS.includes(method) && BATTALION_ROSTER_WRITE.test(pathname);
 }
 
 /** Convenience for server components: the battalion a user is confined to, or null. */

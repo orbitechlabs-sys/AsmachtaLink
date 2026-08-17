@@ -18,6 +18,16 @@ export const rosterEntrySchema = z.object({
 
 export type RosterFormValues = z.infer<typeof rosterEntrySchema>;
 
+/**
+ * Payload for the battalion-scoped roster endpoints under `/api/battalions/…`.
+ * `battalion_id` is deliberately absent: the target battalion comes from the route and is
+ * checked against the caller's own row, so a client cannot register a soldier under
+ * another unit by editing the body.
+ */
+export const battalionRosterEntrySchema = rosterEntrySchema.omit({ battalion_id: true });
+
+export type BattalionRosterFormValues = z.infer<typeof battalionRosterEntrySchema>;
+
 export const rosterStatusSchema = z.object({
   status: z.enum(ROSTER_STATUSES as [RosterStatus, ...RosterStatus[]]),
   note: z.string().nullish(),
