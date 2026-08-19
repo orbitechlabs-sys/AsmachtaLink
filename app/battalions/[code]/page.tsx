@@ -1,18 +1,24 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
-import { listRosterForBattalion } from "@/lib/db/repositories/roster";
 import { listRequests } from "@/lib/db/repositories/requests";
-import { getCertificationById } from "@/lib/db/repositories/certifications";
-import { listGapRows } from "@/lib/db/repositories/certification-gaps";
 import { getBattalionSummary } from "@/lib/db/repositories/battalion-summary";
-import { getCurrentRole } from "@/lib/auth/current-role";
+import {
+  listBattalionAllocations,
+  listBattalionTasks,
+  listAdminConfirmations,
+  getQuarterCompletion,
+} from "@/lib/db/repositories/battalion-dashboard";
+import { countPendingIdentity } from "@/lib/db/repositories/force-structure";
 import { getCurrentUser } from "@/lib/auth/user";
 import { getBattalionScope } from "@/lib/auth/scope";
-import { canManageCertifications, canEdit as canEditUser } from "@/lib/auth/permissions";
-import { RosterStatusBadge, RequestStatusBadge } from "@/components/certifications/status-badge";
-import { BattalionGapsBadges } from "@/components/requests/battalion-gaps-badges";
-import { BattalionSummary } from "@/components/battalions/battalion-summary";
+import { canEditBattalion } from "@/lib/auth/permissions";
+import { BattalionDashboard } from "@/components/battalions/battalion-dashboard";
+import {
+  listInfluencingFactors,
+  getInfluencingFactorBattalions,
+} from "@/lib/db/repositories/influencing-factors";
+import { certificationToCalendarItem, influencingFactorToCalendarItem } from "@/components/calendar/types";
+import { certificationColor } from "@/lib/utils/cert-colors";
 
 export const dynamic = "force-dynamic";
 
@@ -25,86 +31,86 @@ export default async function BattalionDetailPage({
   const battalion = await getBattalionByCode(code);
   if (!battalion) notFound();
 
-  // A battalion-scoped user may only open their own battalion — the URL is user-supplied,
-  // so hiding the other cards on the list page is not a boundary.
   const scope = await getBattalionScope();
   if (scope && scope.battalionId !== battalion.id) notFound();
 
-  const roster = await listRosterForBattalion(battalion.id);
-  const requests = await listRequests({ battalionCode: code });
-  // Every figure in the summary is derived for this battalion alone.
-  const summary = await getBattalionSummary(battalion.id);
-  // A scoped user cannot open the הסמכות section, so their certification links go to this
-  // battalion's own view of the certification; global roles keep the full page.
+  const me = await getCurrentUser();
+  const canEdit = canEditBattalion(me, battalion.id);
   const certificationHref = (certificationId: number) =>
     scope
       ? `/battalions/${battalion.code}/certifications/${certificationId}`
       : `/certifications/${certificationId}`;
-  // Scoped: the rows carry only this battalion's numbers, so the badges cannot ship
-  // another unit's gaps to the browser alongside them.
-  const gapRows = await listGapRows(scope?.battalionId);
-  // `certification_id` is nullable since request-stage soldiers exist, but
-  // listRosterForBattalion only returns certification-linked entries — the guard keeps
-  // the types honest without changing behaviour.
-  const certifications = new Map(
-    (await Promise.all(roster.map(async (entry) => [
-      entry.certification_id,
-      entry.certification_id === null ? undefined : await getCertificationById(entry.certification_id),
-    ] as const)))
+
+  const [summary, allocations, adminRows, quarter, requests, pendingIdentity, factors] =
+    await Promise.all([
+      getBattalionSummary(battalion.id),
+      listBattalionAllocations(battalion.id),
+      listAdminConfirmations(battalion.id),
+      getQuarterCompletion(battalion.id),
+      listRequests({ battalionCode: code }),
+      countPendingIdentity(battalion.id),
+      listInfluencingFactors(),
+    ]);
+
+  const tasks = await listBattalionTasks(battalion.id, allocations, pendingIdentity);
+
+  const certItems = allocations.map((a) =>
+    certificationToCalendarItem({
+      id: a.certification_id,
+      template_id: null,
+      name: a.name,
+      domain: null,
+      start_date: a.start_date,
+      end_date: a.end_date,
+      location: a.location,
+      total_slots: a.allocated_slots,
+      registration_open: 0,
+      status: a.status,
+      notes: null,
+      origin_request_id: null,
+      gap_row_id: null,
+      created_by_role: "",
+      color_hex: a.color_hex,
+      created_at: "",
+      updated_at: "",
+      registered_count: a.registered,
+      slots_remaining: a.remaining,
+      battalions: [{ code: battalion.code, name: battalion.name, color_hex: battalion.color_hex }],
+    })
   );
-  const role = await getCurrentRole();
-  const me = await getCurrentUser();
-  const canEdit = canManageCertifications(role) && canEditUser(me);
+
+  const factorItems = (
+    await Promise.all(
+      factors.map(async (f) => {
+        const bns = await getInfluencingFactorBattalions(f.id);
+        return influencingFactorToCalendarItem(f, bns);
+      })
+    )
+  ).map((item) =>
+    scope ? { ...item, battalions: item.battalions.filter((b) => b.code === battalion.code) } : item
+  );
+
+  const calendarItems = [
+    ...factorItems,
+    ...certItems.map((item) => ({
+      ...item,
+      href: certificationHref(item.id),
+      color: item.color || certificationColor(item.name),
+    })),
+  ];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold" style={{ color: battalion.color_hex }}>
-        {battalion.name}
-      </h1>
-
-      <BattalionSummary summary={summary} certificationHref={certificationHref} />
-
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">פערי הסמכות</h2>
-        <BattalionGapsBadges rows={gapRows} battalionId={battalion.id} canEdit={canEdit} />
-      </div>
-
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">דרישות</h2>
-        {requests.map((r) => (
-          <Link key={r.id} href={`/requests/${r.id}`} className="block border rounded-md p-2 text-sm hover:shadow-sm">
-            <div className="flex items-center justify-between">
-              <span>
-                {r.requested_cert_type} ({r.quantity_needed})
-              </span>
-              <RequestStatusBadge status={r.status} />
-            </div>
-          </Link>
-        ))}
-        {requests.length === 0 && <p className="text-muted-foreground text-sm">אין דרישות.</p>}
-      </div>
-
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">חיילים רשומים להסמכות</h2>
-        {roster.map((entry) => {
-          const cert = certifications.get(entry.certification_id);
-          return (
-            <Link
-              key={entry.id}
-              href={certificationHref(entry.certification_id!)}
-              className="block border rounded-md p-2 text-sm hover:shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <span>
-                  {entry.full_name} · {cert?.name}
-                </span>
-                <RosterStatusBadge status={entry.status} />
-              </div>
-            </Link>
-          );
-        })}
-        {roster.length === 0 && <p className="text-muted-foreground text-sm">אין חיילים רשומים.</p>}
-      </div>
-    </div>
+    <BattalionDashboard
+      battalion={battalion}
+      summary={summary}
+      allocations={allocations}
+      tasks={tasks}
+      adminRows={adminRows}
+      quarter={quarter}
+      requests={requests}
+      calendarItems={calendarItems}
+      canEdit={canEdit}
+      scopedCertLinks={Boolean(scope)}
+    />
   );
 }

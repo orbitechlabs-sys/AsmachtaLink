@@ -4,6 +4,9 @@ import type { RosterEntry, RosterStatus } from "@/lib/types";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
+import type { BattalionQuotaUsage } from "@/lib/battalions/types";
+
+export type { BattalionQuotaUsage } from "@/lib/battalions/types";
 
 export async function listRosterForCertification(certificationId: number): Promise<RosterEntry[]> {
   return query<RosterEntry>(
@@ -202,20 +205,6 @@ export async function countBattalionQuotaUsage(
     client
   );
   return row?.c ?? 0;
-}
-
-export interface BattalionQuotaUsage {
-  /** Slots allocated to this battalion, or null when it has no allocation at all. */
-  allocated: number | null;
-  /** Non-reserve soldiers occupying the allocation. */
-  used: number;
-  /** Reserve soldiers — listed, never counted against the allocation. */
-  reserve: number;
-  /** allocated − used, floored at 0. null when there is no allocation. */
-  remaining: number | null;
-  registration_lock_at: string | null;
-  /** True once the registration deadline on the allocation has passed. */
-  locked: boolean;
 }
 
 /** The battalion's allocation on a certification and how much of it is used. Drives both

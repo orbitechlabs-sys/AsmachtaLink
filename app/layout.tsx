@@ -10,7 +10,7 @@ import { RoleProvider } from "@/lib/auth/role-context";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
 import { isBrigade } from "@/lib/auth/permissions";
-import { navLinksFor } from "@/lib/auth/nav";
+import { navLinksForView } from "@/lib/auth/nav";
 import { scopedBattalionIdOf } from "@/lib/auth/battalion-scope";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
 
@@ -34,7 +34,10 @@ export default async function RootLayout({
   // The visible tabs come from the authenticated user's real row, resolved here on the
   // server — never from the `active_role` cookie and never from a client fetch, which
   // would paint the full tab list first and only then hide the forbidden ones.
-  const navLinks = navLinksFor(me);
+  // `role` only narrows the result: it hides the two battalion-only tabs from a brigade
+  // view that has selected no battalion. What the user may see at all still comes from
+  // their authenticated row inside navLinksFor.
+  const navLinks = navLinksForView(me, role);
   const scopedBattalionId = scopedBattalionIdOf(me);
   const scopedBattalion =
     scopedBattalionId === null ? null : (await getBattalionById(scopedBattalionId)) ?? null;

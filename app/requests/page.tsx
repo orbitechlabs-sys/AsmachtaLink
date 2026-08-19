@@ -2,6 +2,12 @@ import Link from "next/link";
 import { listRequests } from "@/lib/db/repositories/requests";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { listGapRows } from "@/lib/db/repositories/certification-gaps";
+import {
+  listCertificationFamilies,
+  listComputedGaps,
+} from "@/lib/db/repositories/gaps";
+import { computeGapRow } from "@/lib/gaps/compute";
+import { displayFamilyForGap } from "@/lib/gaps/families";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
 import {
@@ -14,6 +20,7 @@ import {
 import { getBattalionScope } from "@/lib/auth/scope";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { CertificationGapsTable } from "@/components/requests/certification-gaps-table";
+import { EstablishmentGapsWidget } from "@/components/requests/establishment-gaps-widget";
 import { RequestsExportActions, REQUESTS_PAGE_CONTENT_ID } from "@/components/requests/requests-export-actions";
 import { DeleteRequestButton } from "@/components/requests/delete-request-button";
 import { URGENCY_LABELS, type Urgency } from "@/lib/types";
@@ -48,6 +55,18 @@ export default async function RequestsPage() {
   // column — its own — and rows that carry no other battalion's numbers, so the other
   // units are absent from the payload and from the Excel/PDF exports, not merely hidden.
   const gapRows = await listGapRows(scope?.battalionId);
+  const [computedRows, families] = scope
+    ? await Promise.all([listComputedGaps(scope.battalionId), listCertificationFamilies()])
+    : [[], []];
+  const establishmentRows = computedRows.map((r) => {
+    const fam = displayFamilyForGap(r.family_id, r.template_domain, families);
+    return {
+      ...r,
+      familyId: fam?.id ?? null,
+      family_id: fam?.id ?? null,
+      ...computeGapRow(r.required_count, r.held_count),
+    };
+  });
   const gapBattalionCodes = ["5030", "8207", "9308", "6228", "gdsm", "hq"];
   const gapBattalions = scope
     ? battalions.filter((b) => b.id === scope.battalionId)
@@ -76,6 +95,9 @@ export default async function RequestsPage() {
             battalions={gapBattalions}
             canEdit={!scope && canManageCertifications(role) && canEditData}
           />
+          {scope && (
+            <EstablishmentGapsWidget rows={establishmentRows} families={families} />
+          )}
         </div>
 
         <div className="flex items-center justify-between">

@@ -12,7 +12,11 @@
     "db:migrate": "tsx scripts/migrate-postgres.ts",
     "db:import-sqlite": "tsx scripts/migrate-from-sqlite.ts",
     "db:backup": "tsx scripts/backup-db.ts",
-    "db:restore": "tsx scripts/restore-backup.ts"
+    "db:restore": "tsx scripts/restore-backup.ts",
+    "import:force-structure": "tsx scripts/import-force-structure.ts",
+    "seed:6228-gaps": "tsx scripts/seed-6228-gap-keys.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -53,6 +57,7 @@
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

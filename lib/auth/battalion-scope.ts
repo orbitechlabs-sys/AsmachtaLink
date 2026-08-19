@@ -11,6 +11,11 @@ export const BATTALION_SCOPED_SECTIONS: string[] = [
   "/requests",
   "/battalions",
   "/reports",
+  // The force-structure and gaps tabs are battalion-only by design: they show one
+  // battalion's establishment and its derived gaps, take their battalion from the
+  // session, and carry no battalion in the URL.
+  "/force-structure",
+  "/gaps",
 ];
 
 /** Where a scoped user lands when they aim at a section that is not theirs. */
@@ -46,6 +51,13 @@ const BATTALION_SCOPED_API_PREFIXES = [
   "/api/requests",
   "/api/reports",
   "/api/certification-gaps",
+  "/api/force-structure",
+  "/api/gaps",
+  "/api/battalion",
+  // The two roster sub-resources a battalion tracks for its own soldiers: administrative
+  // confirmation and required documents. Both are separate tracking layers that never
+  // mutate the roster entry itself.
+  "/api/roster",
 ];
 
 function matches(pathname: string, prefix: string): boolean {
@@ -82,12 +94,39 @@ const BATTALION_ROSTER_WRITE = /^\/api\/battalions\/\d+\/certifications\/\d+\/ro
 
 const ROSTER_WRITE_METHODS = ["POST", "PATCH", "DELETE"];
 
+/**
+ * The force-structure writes a battalion editor may perform: moving soldiers between
+ * posts and the bank, and recording certifications they hold.
+ *
+ * `/api/force-structure/admin/roles` is deliberately NOT matched here. That is the
+ * seeding path — the only writer of `roles` — and it is gated on super-admin instead,
+ * because the establishment is reference data that a battalion editor may never change.
+ */
+const FORCE_STRUCTURE_WRITE =
+  /^\/api\/force-structure\/(assignments|bank|soldier-certifications)(\/\d+)?(\/move)?$/;
+
+/** Editing the operational requirement key, switching source, and nominating candidates.
+ * The establishment key has no route at all — see gap_requirement_keys' lock. */
+const GAPS_WRITE = /^\/api\/gaps\/\d+\/(key|active-source|nominations)(\/\d+)?$/;
+
+/** Administrative confirmation and required-document tracking for one roster entry.
+ * Neither touches `roster_entries` itself. */
+const ROSTER_TRACKING_WRITE = /^\/api\/roster\/\d+\/(admin-confirmation|documents)$/;
+
 /** The two writes a battalion editor may perform: a request for their own battalion, and
  * managing their own battalion's soldiers on a certification within its allocation.
  * Everything else stays denied by `canEdit()` inside the individual handlers. */
 export function isWriteAllowedForBattalionEditor(pathname: string, method: string): boolean {
   if (method === "POST" && pathname === "/api/requests") return true;
-  return ROSTER_WRITE_METHODS.includes(method) && BATTALION_ROSTER_WRITE.test(pathname);
+  if (ROSTER_WRITE_METHODS.includes(method) && BATTALION_ROSTER_WRITE.test(pathname)) return true;
+  // The new subtrees additionally accept PUT (replacing a requirement key, setting a
+  // document's state); the roster rule above keeps its original three methods.
+  if (!ROSTER_WRITE_METHODS.includes(method) && method !== "PUT") return false;
+  return (
+    FORCE_STRUCTURE_WRITE.test(pathname) ||
+    GAPS_WRITE.test(pathname) ||
+    ROSTER_TRACKING_WRITE.test(pathname)
+  );
 }
 
 /** Convenience for server components: the battalion a user is confined to, or null. */

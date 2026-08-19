@@ -19,7 +19,9 @@ import {
 } from "@/components/ui/table";
 import { RosterStatusBadge } from "@/components/certifications/status-badge";
 import type { RosterEntry } from "@/lib/types";
-import type { BattalionQuotaUsage } from "@/lib/db/repositories/roster";
+import type { BattalionQuotaUsage } from "@/lib/battalions/types";
+import { SoldierSearch } from "@/components/battalions/soldier-search";
+import type { SoldierLookupRow } from "@/lib/force-structure/types";
 
 interface Draft {
   full_name: string;
@@ -30,6 +32,9 @@ interface Draft {
   commander_phone: string;
   notes: string;
   is_reserve: boolean;
+  has_prior_certification: boolean;
+  fromFs: boolean;
+  heldCerts: string[];
 }
 
 function emptyDraft(isReserve: boolean): Draft {
@@ -42,6 +47,9 @@ function emptyDraft(isReserve: boolean): Draft {
     commander_phone: "",
     notes: "",
     is_reserve: isReserve,
+    has_prior_certification: false,
+    fromFs: false,
+    heldCerts: [],
   };
 }
 
@@ -57,15 +65,24 @@ export function BattalionRosterPanel({
   entries,
   quota,
   canEdit,
+  variant = "page",
+  onSaved,
 }: {
   battalionId: number;
   certificationId: number;
-  entries: RosterEntry[];
+  entries: Array<
+    Pick<
+      RosterEntry,
+      "id" | "full_name" | "personal_number" | "company_platoon" | "phone" | "status" | "is_reserve"
+    >
+  >;
   quota: BattalionQuotaUsage;
   canEdit: boolean;
+  variant?: "page" | "inline";
+  onSaved?: () => void;
 }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(variant === "inline" ? emptyDraft(false) : null);
   const [submitting, setSubmitting] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [movingId, setMovingId] = useState<number | null>(null);
@@ -100,6 +117,7 @@ export function BattalionRosterPanel({
         commander_phone: draft.commander_phone,
         notes: draft.notes,
         is_reserve: draft.is_reserve,
+        has_prior_certification: draft.has_prior_certification,
       }),
     });
     setSubmitting(false);
@@ -113,13 +131,14 @@ export function BattalionRosterPanel({
       return;
     }
     toast.success(draft.is_reserve ? "החייל נוסף לעתודה" : "החייל נוסף להסמכה");
-    setDraft(null);
+    setDraft(variant === "inline" ? emptyDraft(startsAsReserve) : null);
+    onSaved?.();
     router.refresh();
   }
 
   /** Moves a soldier between the עתודה and the allocation. Going INTO the allocation takes a
    * slot, so the server applies the same limit an addition faces. */
-  async function toggleReserve(entry: RosterEntry) {
+  async function toggleReserve(entry: { id: number; is_reserve: number; full_name: string }) {
     const toReserve = entry.is_reserve === 0;
     setMovingId(entry.id);
     const res = await fetch(`${base}/${entry.id}`, {
@@ -134,10 +153,11 @@ export function BattalionRosterPanel({
       return;
     }
     toast.success(toReserve ? "החייל הועבר לעתודה" : "החייל הועבר להקצאה");
+    onSaved?.();
     router.refresh();
   }
 
-  async function remove(entry: RosterEntry) {
+  async function remove(entry: { id: number; full_name: string }) {
     if (!confirm(`להסיר את ${entry.full_name} מההסמכה?`)) return;
     setRemovingId(entry.id);
     const res = await fetch(`${base}/${entry.id}`, { method: "DELETE" });
@@ -148,14 +168,15 @@ export function BattalionRosterPanel({
       return;
     }
     toast.success("החייל הוסר");
+    onSaved?.();
     router.refresh();
   }
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="text-lg font-semibold">חיילי הגדוד בהסמכה</h2>
-        {canEdit && !quota.locked && !noAllocation && (
+        {variant === "page" && <h2 className="text-lg font-semibold">חיילי הגדוד בהסמכה</h2>}
+        {canEdit && !quota.locked && !noAllocation && variant === "page" && (
           <Button
             size="sm"
             variant={draft ? "outline" : "default"}
@@ -191,32 +212,93 @@ export function BattalionRosterPanel({
       )}
 
       {draft && (
-        <div className="rounded-md border p-3 space-y-4">
+        <div className="rounded-md border p-3 space-y-4 bg-slate-50">
+          <div className="space-y-1.5">
+            <Label>חייל — שם מלא או מספר אישי</Label>
+            <SoldierSearch
+              battalionId={battalionId}
+              onPick={(row: SoldierLookupRow) =>
+                patch({
+                  full_name: row.full_name,
+                  personal_number: row.personal_number,
+                  company_platoon: row.frame,
+                  phone: row.phone ?? "",
+                  fromFs: true,
+                  heldCerts: row.certs,
+                })
+              }
+              onFreeText={(value) => {
+                const parts = value.split("·").map((s) => s.trim());
+                if (parts.length >= 2 && /^\d+$/.test(parts[1] ?? "")) {
+                  patch({ full_name: parts[0], personal_number: parts[1], fromFs: false });
+                } else if (/^\d+$/.test(value.trim())) {
+                  patch({ personal_number: value.trim(), fromFs: false });
+                } else {
+                  patch({ full_name: value, fromFs: false, heldCerts: [] });
+                }
+              }}
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>שם מלא</Label>
+              <Label>
+                שם מלא
+                {draft.fromFs && (
+                  <i className="not-italic text-[0.6rem] font-bold text-primary bg-accent rounded-full px-1.5 ms-1">
+                    מ״שניים לפנים״
+                  </i>
+                )}
+              </Label>
               <Input
+                className={draft.fromFs ? "bg-blue-50 border-blue-200" : ""}
                 value={draft.full_name}
                 onChange={(e) => patch({ full_name: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>מספר אישי</Label>
+              <Label>
+                מספר אישי
+                {draft.fromFs && (
+                  <i className="not-italic text-[0.6rem] font-bold text-primary bg-accent rounded-full px-1.5 ms-1">
+                    מ״שניים לפנים״
+                  </i>
+                )}
+              </Label>
               <Input
+                className={draft.fromFs ? "bg-blue-50 border-blue-200" : ""}
                 value={draft.personal_number}
                 onChange={(e) => patch({ personal_number: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>פלוגה / מסגרת</Label>
+              <Label>
+                פלוגה / מסגרת
+                {draft.fromFs && (
+                  <i className="not-italic text-[0.6rem] font-bold text-primary bg-accent rounded-full px-1.5 ms-1">
+                    מ״שניים לפנים״
+                  </i>
+                )}
+              </Label>
               <Input
+                className={draft.fromFs ? "bg-blue-50 border-blue-200" : ""}
                 value={draft.company_platoon}
                 onChange={(e) => patch({ company_platoon: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>טלפון</Label>
-              <Input value={draft.phone} onChange={(e) => patch({ phone: e.target.value })} />
+              <Label>
+                טלפון
+                {draft.fromFs && (
+                  <i className="not-italic text-[0.6rem] font-bold text-primary bg-accent rounded-full px-1.5 ms-1">
+                    מ״שניים לפנים״
+                  </i>
+                )}
+              </Label>
+              <Input
+                className={draft.fromFs ? "bg-blue-50 border-blue-200" : ""}
+                value={draft.phone}
+                onChange={(e) => patch({ phone: e.target.value })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>שם המפקד</Label>
@@ -234,13 +316,36 @@ export function BattalionRosterPanel({
             </div>
           </div>
 
+          <div className="flex items-center gap-2 rounded-md border p-2.5 bg-white">
+            <Checkbox
+              id={`prior-${certificationId}`}
+              checked={draft.has_prior_certification}
+              onCheckedChange={(v) => patch({ has_prior_certification: Boolean(v) })}
+            />
+            <Label htmlFor={`prior-${certificationId}`}>
+              קיימת הסמכה קודמת בתחום
+              {draft.heldCerts.length > 0 && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  {" "}
+                  · רשומות במבנה: {draft.heldCerts.join(", ")}
+                </span>
+              )}
+            </Label>
+          </div>
+
+          {!draft.fromFs && (draft.full_name.trim() || draft.personal_number.trim()) && (
+            <p className="text-xs text-muted-foreground">
+              אין התאמה במבנה. הרישום מסומן כהזנה חופשית — לא נוצר חייל ב״שניים לפנים״.
+            </p>
+          )}
+
           <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5">
             <Checkbox
-              id="battalion-roster-reserve"
+              id={`battalion-roster-reserve-${certificationId}`}
               checked={draft.is_reserve}
               onCheckedChange={(v) => patch({ is_reserve: Boolean(v) })}
             />
-            <Label htmlFor="battalion-roster-reserve" className="text-amber-800">
+            <Label htmlFor={`battalion-roster-reserve-${certificationId}`} className="text-amber-800">
               רישום כעתודה (מחוץ למכסת ההקצאות של הגדוד)
             </Label>
           </div>
@@ -255,9 +360,11 @@ export function BattalionRosterPanel({
               {submitting && <Loader2 className="size-4 animate-spin" />}
               {draft.is_reserve ? "הוסף לעתודה" : "הוסף חייל"}
             </Button>
-            <Button variant="outline" onClick={() => setDraft(null)}>
-              ביטול
-            </Button>
+            {variant === "page" && (
+              <Button variant="outline" onClick={() => setDraft(null)}>
+                ביטול
+              </Button>
+            )}
           </div>
         </div>
       )}
