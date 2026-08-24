@@ -1,5 +1,8 @@
+import { config } from "dotenv";
 import { withTransaction, execute, query, queryOne } from "@/lib/db/client";
 import { GAP_ROWS_6228, UNIT_COUNTS_6228, UNIT_NAMES, activeKeyOf } from "../tests/fixtures/battalion-6228";
+
+config({ path: ".env.local" });
 
 /**
  * Dev/test seed: requirement keys and manual unit counts for battalion 6228.
@@ -109,7 +112,9 @@ async function main() {
   void activeKeyOf;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

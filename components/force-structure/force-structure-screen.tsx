@@ -3,7 +3,19 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { cn } from "@/lib/utils";
 import { computeCompanyKpis, requirementsOf, type RoleStatus } from "@/lib/force-structure/status";
@@ -58,6 +70,14 @@ export function ForceStructureScreen({
   const [filter, setFilter] = useState<Filter>("all");
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<Picked>(null);
+  // The open edit session's snapshot id. Null outside edit mode. The snapshot itself lives
+  // on the server — this is only the handle to it.
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  // Whether this session has committed anything yet. Drives the confirmation: backing out
+  // of an untouched session has nothing to warn about.
+  const [dirty, setDirty] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [bankOpen, setBankOpen] = useState(true);
   const [xferOpen, setXferOpen] = useState(false);
   const [dropRole, setDropRole] = useState<number | null>(null);
@@ -104,7 +124,10 @@ export function ForceStructureScreen({
         body: JSON.stringify({ target }),
       }
     );
-    if (res.ok) router.refresh();
+    if (res.ok) {
+      setDirty(true);
+      router.refresh();
+    }
   }
 
   async function moveBank(bankId: number, roleId: number) {
@@ -113,7 +136,98 @@ export function ForceStructureScreen({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role_id: roleId }),
     });
-    if (res.ok) router.refresh();
+    if (res.ok) {
+      setDirty(true);
+      router.refresh();
+    }
+  }
+
+  // --- edit session ---------------------------------------------------------
+  //
+  // Every move above commits the moment it is made, so "מצב עריכה" is not a draft: there is
+  // no local copy of the occupancy to throw away. The session endpoints exist for exactly
+  // that reason — the server snapshots the people layer when edit mode opens, and "חזור"
+  // asks it to write that snapshot back.
+
+  /** Leaves edit mode locally. Shared by both exits, after each has done its own work. */
+  function leaveEditMode() {
+    setEditMode(false);
+    setPicked(null);
+    setSessionId(null);
+    setDirty(false);
+  }
+
+  async function enterEditMode() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/force-structure/edit-session?battalionId=${battalion.id}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("open failed");
+      const data: { snapshot_id: number } = await res.json();
+      setSessionId(data.snapshot_id);
+      setDirty(false);
+      setPicked(null);
+      setEditMode(true);
+    } catch {
+      // Refusing to open is the honest failure. Entering without a snapshot would mean
+      // entering with no way back — the first drag would already be in the database — and a
+      // "חזור" that silently cannot revert is worse than no "חזור" at all.
+      toast.error("לא ניתן לפתוח מצב עריכה כרגע. נסה שוב.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** "סיום עריכה" — keeps everything. The moves are already saved; this drops the snapshot. */
+  function finishEditing() {
+    const id = sessionId;
+    leaveEditMode();
+    if (id !== null) {
+      // Not awaited and its failure not surfaced: the edits are kept either way, and the
+      // next time this user opens a session the stale snapshot is cleared server-side.
+      void fetch(`/api/force-structure/edit-session/${id}?battalionId=${battalion.id}`, {
+        method: "DELETE",
+      });
+    }
+  }
+
+  /** "חזור" — asks first if there is anything to lose, then reverts. */
+  function requestCancel() {
+    if (!dirty) {
+      finishEditing();
+      return;
+    }
+    setConfirmCancel(true);
+  }
+
+  async function confirmCancelEditing() {
+    const id = sessionId;
+    if (id === null) {
+      setConfirmCancel(false);
+      leaveEditMode();
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/force-structure/edit-session/${id}/revert?battalionId=${battalion.id}`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error("revert failed");
+      setConfirmCancel(false);
+      leaveEditMode();
+      toast.success("השינויים בוטלו");
+      router.refresh();
+    } catch {
+      // Stay in edit mode rather than dropping the user out believing their changes were
+      // undone. Refresh anyway: if the request itself timed out, the transaction's fate is
+      // not ours to know, so the screen must show what the server actually holds.
+      toast.error("ביטול השינויים נכשל. רענן ובדוק את המצבה לפני שתמשיך.");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   function onCardClick(r: CanvasRoleRow) {
@@ -143,17 +257,23 @@ export function ForceStructureScreen({
           </div>
         </div>
         <div className="flex gap-2">
-          {canEdit && (
-            <Button
-              variant={editMode ? "default" : "outline"}
-              onClick={() => {
-                setEditMode(!editMode);
-                setPicked(null);
-              }}
-            >
-              {editMode ? "✓ סיום עריכה" : "✎ מצב עריכה"}
-            </Button>
-          )}
+          {canEdit &&
+            (editMode ? (
+              <>
+                <Button variant="default" disabled={busy} onClick={finishEditing}>
+                  ✓ סיום עריכה
+                </Button>
+                <Button variant="outline" disabled={busy} onClick={requestCancel}>
+                  {busy && <Loader2 className="size-4 animate-spin" />}
+                  ↩ חזור
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" disabled={busy} onClick={() => void enterEditMode()}>
+                {busy && <Loader2 className="size-4 animate-spin" />}
+                ✎ מצב עריכה
+              </Button>
+            ))}
         </div>
       </div>
 
@@ -539,6 +659,33 @@ export function ForceStructureScreen({
         <span>🔒 דרישות התקן נעולות — לא ניתנות לעריכה מהמסך הזה</span>
         <span>&quot;/&quot; = דרישה חלופית</span>
       </div>
+
+      <AlertDialog open={confirmCancel} onOpenChange={(open) => !busy && setConfirmCancel(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ביטול שינויים</AlertDialogTitle>
+            <AlertDialogDescription>
+              לבטל את השינויים? כל השינויים שביצעת לא יישמרו.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>המשך עריכה</AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(buttonVariants({ variant: "destructive" }))}
+              disabled={busy}
+              onClick={(e) => {
+                // The dialog closes itself on click; the revert has to finish first so a
+                // failure can leave the user where they were.
+                e.preventDefault();
+                void confirmCancelEditing();
+              }}
+            >
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              בטל שינויים
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

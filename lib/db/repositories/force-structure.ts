@@ -1,4 +1,9 @@
+import type { PoolClient } from "pg";
 import { execute, query, queryOne, withTransaction } from "@/lib/db/client";
+import {
+  planOccupancyRestore,
+  type OccupantFields,
+} from "@/lib/force-structure/restore-plan";
 import type {
   BankSoldierRow,
   CanvasRoleRow,
@@ -519,5 +524,320 @@ export async function placeBankOnRole(
       client
     );
     return { ok: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cancellable edit sessions ("חזור" on the canvas).
+//
+// The canvas has no draft state: `moveAssignment` and `placeBankOnRole` above each commit
+// as they are called, so by the time the user changes their mind the writes are already in
+// the database. Backing out therefore means writing the people layer back to what it was
+// when "מצב עריכה" opened, which is what these three functions do — open a session (take
+// the snapshot), revert to it, or close it and keep the edits.
+//
+// Two things a revert must never do, and the reason each is structural rather than a
+// matter of care:
+//
+//   1. TOUCH `roles`. The snapshot payload has no requirement columns in it, so there is
+//      nothing for a revert to write back to the establishment even by accident (§0.3.1).
+//
+//   2. DELETE AND RE-INSERT THE WHOLE OF `role_assignments`. `gap_nominations` references
+//      `role_assignments(id)` ON DELETE SET NULL under a CHECK that demands exactly one of
+//      (role_assignment_id, free_text_name) — so deleting a nominated assignment turns
+//      that row's link to NULL and trips the CHECK, aborting the transaction. The revert
+//      below is keyed on `role_id` and UPDATEs the occupant columns of the row already
+//      sitting on each post, exactly as a swap does, so a post that was occupied before
+//      the session and after it keeps its assignment id and its nominations.
+// ---------------------------------------------------------------------------
+
+/**
+ * One post's occupant, as it stood when the edit session opened. An alias rather than its
+ * own shape, so the payload and what `planOccupancyRestore` reasons about cannot drift.
+ */
+export type SnapshotAssignment = OccupantFields;
+
+/** One 120% bank member, as they stood when the edit session opened. */
+export interface SnapshotBankSoldier {
+  id: number;
+  company_id: number;
+  department: string | null;
+  full_name: string;
+  personal_number: string | null;
+  rank: string | null;
+  unavailable_until: string | null;
+  note: string | null;
+  pending_pn: number;
+}
+
+/**
+ * The battalion's people layer at one instant. `version` is stored with the payload so a
+ * snapshot written by an older deploy is refused rather than half-understood — a partial
+ * read here would write a partly-wrong occupancy and call it a restore.
+ */
+export interface OccupancySnapshot {
+  version: 1;
+  assignments: SnapshotAssignment[];
+  bank: SnapshotBankSoldier[];
+}
+
+const SNAPSHOT_VERSION = 1;
+
+async function readOccupancy(battalionId: number, client: PoolClient) {
+  const assignments = await query<SnapshotAssignment & Record<string, unknown>>(
+    `SELECT ra.role_id, ra.full_name, ra.personal_number, ra.rank, ra.phone,
+            ra.pending_pn, ra.pending_name, ra.is_posted
+       FROM role_assignments ra
+       JOIN roles r ON r.id = ra.role_id
+       JOIN companies co ON co.id = r.company_id
+      WHERE co.battalion_id = $1
+      ORDER BY ra.role_id`,
+    [battalionId],
+    client
+  );
+  const bank = await query<SnapshotBankSoldier & Record<string, unknown>>(
+    `SELECT bs.id, bs.company_id, bs.department, bs.full_name, bs.personal_number,
+            bs.rank, bs.unavailable_until, bs.note, bs.pending_pn
+       FROM bank_soldiers bs
+       JOIN companies co ON co.id = bs.company_id
+      WHERE co.battalion_id = $1
+      ORDER BY bs.id`,
+    [battalionId],
+    client
+  );
+  return { assignments, bank };
+}
+
+/**
+ * Opens an edit session: snapshots the battalion's people layer and returns the row id.
+ *
+ * The id is all the browser is given. The payload never leaves the server, which is what
+ * keeps "חזור" from becoming a back door for writing arbitrary occupants — see the note in
+ * migrations/postgres/020_force_structure_edit_snapshots.sql.
+ */
+export async function openEditSession(
+  battalionId: number,
+  userId: string,
+  createdByRole: string | null
+): Promise<{ snapshot_id: number }> {
+  return withTransaction(async (client) => {
+    // One live session per user per battalion. Leaving the previous one behind would let a
+    // stale snapshot — taken before edits the user has since deliberately kept — be
+    // reverted to later.
+    await execute(
+      `DELETE FROM force_structure_edit_snapshots
+        WHERE battalion_id = $1 AND created_by_user = $2`,
+      [battalionId, userId],
+      client
+    );
+
+    const { assignments, bank } = await readOccupancy(battalionId, client);
+    const payload: OccupancySnapshot = { version: SNAPSHOT_VERSION, assignments, bank };
+
+    const row = await queryOne<{ id: number }>(
+      `INSERT INTO force_structure_edit_snapshots
+         (battalion_id, created_by_user, created_by_role, payload)
+       VALUES ($1, $2, $3, $4::jsonb)
+       RETURNING id`,
+      [battalionId, userId, createdByRole, JSON.stringify(payload)],
+      client
+    );
+    // RETURNING on a successful INSERT always yields the row; the throw is here so a
+    // future change that drops it fails loudly instead of handing back NaN.
+    if (!row) throw new Error("snapshot insert returned no id");
+    return { snapshot_id: row.id };
+  });
+}
+
+/** Closes an edit session and KEEPS the edits ("סיום עריכה"). Just drops the snapshot. */
+export async function closeEditSession(
+  snapshotId: number,
+  battalionId: number,
+  userId: string
+): Promise<{ ok: boolean }> {
+  const result = await execute(
+    `DELETE FROM force_structure_edit_snapshots
+      WHERE id = $1 AND battalion_id = $2 AND created_by_user = $3`,
+    [snapshotId, battalionId, userId]
+  );
+  return { ok: result.rowCount > 0 };
+}
+
+/**
+ * Reverts the battalion's people layer to the session's snapshot and closes the session.
+ *
+ * `reason: "stale"` means the snapshot no longer describes this battalion's establishment —
+ * a post or company it names is gone, which only happens if the reference data was
+ * re-imported mid-session. Applying the parts that still match would leave the occupancy
+ * neither where the user left it nor where they started, so nothing is applied at all.
+ */
+export async function revertEditSession(
+  snapshotId: number,
+  battalionId: number,
+  userId: string
+): Promise<{ ok: true } | { ok: false; reason: "not_found" | "stale" | "unsupported_version" }> {
+  return withTransaction(async (client) => {
+    const session = await queryOne<{ payload: OccupancySnapshot }>(
+      `SELECT payload FROM force_structure_edit_snapshots
+        WHERE id = $1 AND battalion_id = $2 AND created_by_user = $3
+        FOR UPDATE`,
+      [snapshotId, battalionId, userId],
+      client
+    );
+    if (!session) return { ok: false, reason: "not_found" as const };
+
+    const snapshot = session.payload;
+    if (snapshot?.version !== SNAPSHOT_VERSION) {
+      return { ok: false, reason: "unsupported_version" as const };
+    }
+
+    // Every post and company the snapshot names must still be this battalion's. Checked up
+    // front, before a single write, so a stale snapshot changes nothing.
+    const roleIds = snapshot.assignments.map((a) => a.role_id);
+    if (roleIds.length > 0) {
+      const known = await query<{ id: number }>(
+        `SELECT r.id FROM roles r
+           JOIN companies co ON co.id = r.company_id
+          WHERE co.battalion_id = $1 AND r.id = ANY($2::int[])`,
+        [battalionId, roleIds],
+        client
+      );
+      if (known.length !== roleIds.length) return { ok: false, reason: "stale" as const };
+    }
+    const companyIds = [...new Set(snapshot.bank.map((b) => b.company_id))];
+    if (companyIds.length > 0) {
+      const known = await query<{ id: number }>(
+        `SELECT id FROM companies WHERE battalion_id = $1 AND id = ANY($2::int[])`,
+        [battalionId, companyIds],
+        client
+      );
+      if (known.length !== companyIds.length) return { ok: false, reason: "stale" as const };
+    }
+
+    // --- posts ------------------------------------------------------------
+    const current = await query<{ id: number; role_id: number }>(
+      `SELECT ra.id, ra.role_id
+         FROM role_assignments ra
+         JOIN roles r ON r.id = ra.role_id
+         JOIN companies co ON co.id = r.company_id
+        WHERE co.battalion_id = $1
+        FOR UPDATE OF ra`,
+      [battalionId],
+      client
+    );
+
+    // Which post gets an UPDATE, a DELETE, or a new row — see lib/force-structure/restore-plan.ts
+    // for why the match is on role_id and why an occupied post is rewritten rather than replaced.
+    const plan = planOccupancyRestore(current, snapshot.assignments);
+
+    // EVERY STEP BELOW IS ONE STATEMENT, whatever the row count. A battalion is ~380 posts
+    // and ~55 bank members, and the first cut of this issued a round trip per row: against a
+    // hosted Postgres that is some 900 sequential round trips inside one transaction, which
+    // ran past the request timeout and rolled the whole revert back — the cancel appeared to
+    // hang and then to have done nothing. Set-based statements keep it at six.
+
+    if (plan.remove.length > 0) {
+      // These posts were empty when the session opened.
+      await execute(
+        `DELETE FROM role_assignments WHERE id = ANY($1::int[])`,
+        [plan.remove],
+        client
+      );
+    }
+
+    if (plan.update.length > 0) {
+      // `role_id` is untouched, so the UNIQUE index on it never sees a collision mid-restore
+      // and the assignment id survives for anything referencing it.
+      await execute(
+        `UPDATE role_assignments ra
+            SET full_name = u.full_name, personal_number = u.personal_number,
+                rank = u.rank, phone = u.phone,
+                pending_pn = u.pending_pn, pending_name = u.pending_name,
+                is_posted = u.is_posted
+           FROM unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[],
+                       $6::smallint[], $7::smallint[], $8::smallint[])
+             AS u(id, full_name, personal_number, rank, phone,
+                  pending_pn, pending_name, is_posted)
+          WHERE ra.id = u.id`,
+        [
+          plan.update.map((u) => u.id),
+          plan.update.map((u) => u.occupant.full_name),
+          plan.update.map((u) => u.occupant.personal_number),
+          plan.update.map((u) => u.occupant.rank),
+          plan.update.map((u) => u.occupant.phone),
+          plan.update.map((u) => u.occupant.pending_pn),
+          plan.update.map((u) => u.occupant.pending_name),
+          plan.update.map((u) => u.occupant.is_posted),
+        ],
+        client
+      );
+    }
+
+    // Posts that were occupied at snapshot time and are empty now. These get new ids: the
+    // original rows were deleted when their occupant was moved to the bank.
+    if (plan.insert.length > 0) {
+      await execute(
+        `INSERT INTO role_assignments
+           (role_id, full_name, personal_number, rank, phone, pending_pn, pending_name, is_posted)
+         SELECT * FROM unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[],
+                              $6::smallint[], $7::smallint[], $8::smallint[])`,
+        [
+          plan.insert.map((o) => o.role_id),
+          plan.insert.map((o) => o.full_name),
+          plan.insert.map((o) => o.personal_number),
+          plan.insert.map((o) => o.rank),
+          plan.insert.map((o) => o.phone),
+          plan.insert.map((o) => o.pending_pn),
+          plan.insert.map((o) => o.pending_name),
+          plan.insert.map((o) => o.is_posted),
+        ],
+        client
+      );
+    }
+
+    // --- bank -------------------------------------------------------------
+    // Nothing references `bank_soldiers(id)`, so the bank is rebuilt wholesale rather than
+    // reconciled row by row. Ids go back as they were, which keeps UNIQUE
+    // (company_id, personal_number) satisfiable in any insert order — the snapshot came out
+    // of the table under that same constraint — and leaves the panel's ids stable.
+    await execute(
+      `DELETE FROM bank_soldiers bs
+        USING companies co
+        WHERE co.id = bs.company_id AND co.battalion_id = $1`,
+      [battalionId],
+      client
+    );
+    if (snapshot.bank.length > 0) {
+      await execute(
+        `INSERT INTO bank_soldiers
+           (id, company_id, department, full_name, personal_number, rank,
+            unavailable_until, note, pending_pn)
+         SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::text[], $5::text[],
+                              $6::text[], $7::text[], $8::text[], $9::smallint[])`,
+        [
+          snapshot.bank.map((b) => b.id),
+          snapshot.bank.map((b) => b.company_id),
+          snapshot.bank.map((b) => b.department),
+          snapshot.bank.map((b) => b.full_name),
+          snapshot.bank.map((b) => b.personal_number),
+          snapshot.bank.map((b) => b.rank),
+          snapshot.bank.map((b) => b.unavailable_until),
+          snapshot.bank.map((b) => b.note),
+          snapshot.bank.map((b) => b.pending_pn),
+        ],
+        client
+      );
+      // Explicit ids bypass the sequence, which would otherwise hand out an id that already
+      // exists on the next bank insert.
+      await execute(
+        `SELECT setval(pg_get_serial_sequence('bank_soldiers', 'id'),
+                       GREATEST(COALESCE((SELECT MAX(id) FROM bank_soldiers), 0), 1))`,
+        [],
+        client
+      );
+    }
+
+    await execute(`DELETE FROM force_structure_edit_snapshots WHERE id = $1`, [snapshotId], client);
+    return { ok: true as const };
   });
 }
