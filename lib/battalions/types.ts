@@ -10,8 +10,10 @@ export interface BattalionQuotaUsage {
   reserve: number;
   /** allocated − used, floored at 0. null when there is no allocation. */
   remaining: number | null;
-  registration_lock_at: string | null;
-  /** True once the registration deadline on the allocation has passed. */
+  /** The certification's single deadline, 'yyyy-MM-dd'. NULL = no deadline. Identical for
+   * every battalion on that certification. */
+  registration_lock_date: string | null;
+  /** True once the registration deadline has passed. */
   locked: boolean;
 }
 
@@ -33,7 +35,8 @@ export interface BattalionAllocation extends AllocationFill {
   start_date: string;
   end_date: string | null;
   color_hex: string | null;
-  registration_lock_at: string | null;
+  /** The certification's single deadline, 'yyyy-MM-dd'. NULL = no deadline. */
+  registration_lock_date: string | null;
   remaining: number;
   reserve: number;
   daysToClose: number | null;

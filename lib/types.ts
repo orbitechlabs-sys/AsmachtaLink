@@ -198,6 +198,10 @@ export interface Certification {
   location: string | null;
   total_slots: number | null;
   registration_open: number;
+  /** Last day on which trainees may be registered, as 'yyyy-MM-dd'. NULL = no deadline.
+   * ONE date for the whole certification — it applies to every battalion's allocation
+   * alike. See lib/utils/registration-lock.ts. */
+  registration_lock_date: string | null;
   status: CertificationStatus;
   notes: string | null;
   origin_request_id: number | null;
@@ -233,8 +237,10 @@ export interface CertificationBattalionQuota {
   battalion_id: number;
   allocated_slots: number;
   notes: string | null;
-  /** Deadline (ISO timestamptz) after which the battalion can no longer
-   * register/edit trainees for this allocation. NULL = no lock. */
+  /** DEPRECATED — the per-allocation deadline from migration 008. Superseded by
+   * `certifications.registration_lock_date`, which applies to every battalion at once.
+   * The column is retained so the deadlines already recorded against it are not lost, but
+   * nothing enforces or edits it any more. */
   registration_lock_at: string | null;
 }
 

@@ -14,6 +14,7 @@ import { CertificationStatusBadge } from "@/components/certifications/status-bad
 import { DateRange } from "@/components/ui/date-range";
 import { BattalionRosterPanel } from "@/components/battalions/battalion-roster-panel";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
+import { formatLockDate } from "@/lib/utils/registration-lock";
 
 export const dynamic = "force-dynamic";
 
@@ -113,10 +114,10 @@ export default async function BattalionCertificationPage({
         </p>
       )}
 
-      {quota.registration_lock_at && !quota.locked && (
+      {quota.registration_lock_date && !quota.locked && (
         <p className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
           <Lock className="size-4" />
-          מועד נעילת ההרשמה: {new Date(quota.registration_lock_at).toLocaleString("he-IL")}
+          מועד נעילת ההרשמה: {formatLockDate(quota.registration_lock_date)}
         </p>
       )}
 

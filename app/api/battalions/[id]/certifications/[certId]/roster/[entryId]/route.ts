@@ -9,6 +9,7 @@ import type { BattalionQuotaUsage } from "@/lib/db/repositories/roster";
 import { battalionRosterEntrySchema } from "@/lib/validation/roster";
 import { requireBattalionEditor } from "@/lib/auth/scope";
 import type { RosterEntry } from "@/lib/types";
+import { REGISTRATION_LOCKED_MESSAGE } from "@/lib/utils/registration-lock";
 
 /**
  * A single soldier of one battalion on one certification. Both the battalion and the
@@ -68,7 +69,7 @@ async function authorize(
   if (quota.locked) {
     return {
       response: NextResponse.json(
-        { error: "ההרשמה להסמכה זו נסגרה — חלף מועד הנעילה.", reason: "registration_locked" },
+        { error: REGISTRATION_LOCKED_MESSAGE, reason: "registration_locked" },
         { status: 403 }
       ),
     };

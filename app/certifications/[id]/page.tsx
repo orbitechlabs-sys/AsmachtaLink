@@ -24,6 +24,7 @@ import { StatusHistoryTimeline } from "@/components/audit/status-history-timelin
 import { TaxList } from "@/components/certifications/tax-list";
 import { CertificationFilesList } from "@/components/certifications/certification-files-list";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
+import { todayIsoDate } from "@/lib/utils/registration-lock";
 import { Paperclip, Pencil, Plus, Printer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -158,7 +159,8 @@ export default async function CertificationDetailPage({
         battalions={battalions}
         canManage={canManage}
         myBattalionId={myBattalionId}
-        nowMs={new Date().getTime()}
+        registrationLockDate={cert.registration_lock_date}
+        today={todayIsoDate()}
       />
 
       <div className="space-y-3">

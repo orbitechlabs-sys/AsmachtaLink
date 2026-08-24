@@ -22,6 +22,7 @@ import type { RosterEntry } from "@/lib/types";
 import type { BattalionQuotaUsage } from "@/lib/battalions/types";
 import { SoldierSearch } from "@/components/battalions/soldier-search";
 import type { SoldierLookupRow } from "@/lib/force-structure/types";
+import { formatLockDate } from "@/lib/utils/registration-lock";
 
 interface Draft {
   full_name: string;
@@ -198,9 +199,7 @@ export function BattalionRosterPanel({
         <p className="text-sm rounded-md border border-rose-200 bg-rose-50 p-2.5 text-rose-800 inline-flex items-center gap-1.5">
           <Lock className="size-4" />
           ההרשמה נסגרה — חלף מועד הנעילה
-          {quota.registration_lock_at
-            ? ` (${new Date(quota.registration_lock_at).toLocaleString("he-IL")})`
-            : ""}
+          {quota.registration_lock_date ? ` (${formatLockDate(quota.registration_lock_date)})` : ""}
           .
         </p>
       )}

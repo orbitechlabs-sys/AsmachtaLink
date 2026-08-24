@@ -24,6 +24,20 @@ export const certificationSchema = z.object({
   is_unlimited: z.boolean().default(false),
   gap_row_id: z.coerce.number().int().nullish(),
   registration_open: z.boolean().default(false),
+  /** Last day trainees may be registered, 'yyyy-MM-dd'. ONE date for the whole
+   * certification — every battalion's allocation closes on it (migration 021).
+   *
+   * An empty string is coerced to null rather than rejected, because that is what a cleared
+   * `<input type="date">` sends and "no deadline" is a legitimate state. The format is
+   * pinned because the value is compared as text, not parsed — a stray timestamp would
+   * compare wrong instead of merely looking wrong. See lib/utils/registration-lock.ts. */
+  registration_lock_date: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "מועד נעילת ההרשמה אינו תקין")
+      .nullish()
+  ),
   notes: z.string().nullish(),
   color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "צבע לא תקין").nullish(),
   prerequisites: z.array(z.string()).default([]),

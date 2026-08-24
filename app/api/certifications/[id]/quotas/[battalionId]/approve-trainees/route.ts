@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getQuota } from "@/lib/db/repositories/certifications";
+import { getCertificationById, getQuota } from "@/lib/db/repositories/certifications";
 import { approveTraineeList } from "@/lib/db/repositories/roster";
 import { traineeApprovalSchema } from "@/lib/validation/quota";
 import { requireEditor } from "@/lib/auth/user";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { battalionCodeOf, isBrigade } from "@/lib/auth/permissions";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
+import { REGISTRATION_LOCKED_MESSAGE, isRegistrationLocked } from "@/lib/utils/registration-lock";
 
 /** Battalion approves (submits) its trainee list for an allocation. Rejected
  * server-side if the registration lock deadline has already passed. */
@@ -42,9 +43,15 @@ export async function POST(
   if (!quota) {
     return NextResponse.json({ error: "no allocation for this battalion" }, { status: 404 });
   }
-  // Server-side deadline enforcement (authoritative — not the client clock).
-  if (quota.registration_lock_at && new Date(quota.registration_lock_at).getTime() < Date.now()) {
-    return NextResponse.json({ error: "registration_locked" }, { status: 403 });
+  // Server-side deadline enforcement (authoritative — not the client clock). The date is
+  // the certification's single `registration_lock_date`, so brigade and battalion are held
+  // to the same moment; the DEPRECATED per-allocation column is not consulted.
+  const cert = await getCertificationById(certId);
+  if (isRegistrationLocked(cert?.registration_lock_date)) {
+    return NextResponse.json(
+      { error: REGISTRATION_LOCKED_MESSAGE, reason: "registration_locked" },
+      { status: 403 }
+    );
   }
 
   const submitted = await approveTraineeList(certId, battId, role);

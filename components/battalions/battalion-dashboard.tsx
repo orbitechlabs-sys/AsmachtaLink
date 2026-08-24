@@ -37,6 +37,7 @@ import type {
 import { openAllocationsOf, urgencyBand } from "@/lib/battalions/open-allocations";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { cn } from "@/lib/utils";
+import { isRegistrationLocked } from "@/lib/utils/registration-lock";
 
 const MONTHS = [
   "ינואר",
@@ -59,8 +60,8 @@ function quotaOf(a: BattalionAllocation): BattalionQuotaUsage {
     used: a.registered,
     reserve: a.reserve,
     remaining: a.remaining,
-    registration_lock_at: a.registration_lock_at,
-    locked: !!a.registration_lock_at && new Date(a.registration_lock_at).getTime() < Date.now(),
+    registration_lock_date: a.registration_lock_date,
+    locked: isRegistrationLocked(a.registration_lock_date),
   };
 }
 

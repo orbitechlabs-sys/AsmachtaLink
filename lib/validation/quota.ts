@@ -1,14 +1,9 @@
 import { z } from "zod";
 
-/** Registration lock deadline for a quota allocation. The UI sends a full ISO-8601
- * timestamp (built client-side via `new Date(datetimeLocalValue).toISOString()`, so
- * the wall-clock time the user picked is converted to a real instant — no UTC
- * off-by-one), or null to clear the lock. */
-export const quotaLockSchema = z.object({
-  registration_lock_at: z.string().datetime({ message: "מועד לא תקין" }).nullable(),
-});
-
-export type QuotaLockValues = z.infer<typeof quotaLockSchema>;
+/* The per-allocation lock schema that used to live here is gone: migration 021 moved the
+ * registration deadline onto the certification itself, so it travels with
+ * `certificationSchema.registration_lock_date` and there is no per-battalion payload to
+ * validate. See lib/validation/certification.ts. */
 
 /** Trainee-approval payload for a quota allocation. `battalion_id` identifies the
  * allocation being approved and is cross-checked against the authenticated caller's

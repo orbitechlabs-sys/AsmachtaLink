@@ -87,6 +87,8 @@ export interface CertificationInput {
   total_slots?: number | null;
   gap_row_id?: number | null;
   registration_open?: boolean;
+  /** 'yyyy-MM-dd', or null for no deadline. One date for every battalion. */
+  registration_lock_date?: string | null;
   status?: CertificationStatus;
   notes?: string | null;
   origin_request_id?: number | null;
@@ -99,8 +101,9 @@ export async function createCertification(input: CertificationInput, client?: Po
   const result = await execute(
     `INSERT INTO certifications
         (template_id, name, domain, start_date, end_date, location, total_slots, gap_row_id,
-         registration_open, status, notes, origin_request_id, created_by_role, color_hex)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         registration_open, registration_lock_date, status, notes, origin_request_id,
+         created_by_role, color_hex)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING id`,
     [
       input.template_id ?? null,
@@ -112,6 +115,7 @@ export async function createCertification(input: CertificationInput, client?: Po
       input.total_slots ?? null,
       input.gap_row_id ?? null,
       input.registration_open ? 1 : 0,
+      input.registration_lock_date || null,
       status,
       input.notes ?? null,
       input.origin_request_id ?? null,
@@ -132,8 +136,9 @@ export async function updateCertification(id: number, input: Partial<Certificati
   await execute(
     `UPDATE certifications SET
       name = $1, domain = $2, start_date = $3, end_date = $4, location = $5, total_slots = $6, gap_row_id = $7,
-      registration_open = $8, notes = $9, color_hex = $10, updated_at = NOW()
-     WHERE id = $11`,
+      registration_open = $8, registration_lock_date = $9, notes = $10, color_hex = $11,
+      updated_at = NOW()
+     WHERE id = $12`,
   [
     input.name ?? existing.name,
     input.domain ?? existing.domain,
@@ -144,6 +149,10 @@ export async function updateCertification(id: number, input: Partial<Certificati
     input.total_slots !== undefined ? input.total_slots : existing.total_slots,
     input.gap_row_id !== undefined ? input.gap_row_id : existing.gap_row_id,
     input.registration_open !== undefined ? (input.registration_open ? 1 : 0) : existing.registration_open,
+    // `undefined` = not sent (keep existing); `null` = explicitly cleared (no deadline).
+    input.registration_lock_date !== undefined
+      ? input.registration_lock_date || null
+      : existing.registration_lock_date,
     input.notes ?? existing.notes,
     input.color_hex !== undefined ? input.color_hex : existing.color_hex,
     id,
@@ -365,8 +374,11 @@ export async function replaceQuotas(
   quotas: { battalion_id: number; allocated_slots: number; notes?: string }[]
 ) {
   await withTransaction(async (client) => {
-    // Preserve any registration lock deadlines across the delete+reinsert, keyed by
-    // battalion — the quota form doesn't carry them, so they'd otherwise be wiped.
+    // Carry the DEPRECATED per-allocation `registration_lock_at` across the
+    // delete+reinsert, keyed by battalion. Nothing enforces or edits that column any more —
+    // migration 021 moved the deadline to `certifications.registration_lock_date` — but the
+    // rewrite would otherwise destroy the historical values, and retention is the one thing
+    // the consolidation promised not to break.
     const existing = await query<{ battalion_id: number; registration_lock_at: string | null }>(
       "SELECT battalion_id, registration_lock_at FROM certification_battalion_quotas WHERE certification_id = $1",
       [certificationId],
@@ -384,22 +396,6 @@ export async function replaceQuotas(
       );
     }
   });
-}
-
-/** Sets/clears the registration lock deadline on an existing allocation. Returns the
- * number of rows updated (0 = no allocation for that battalion). `lockAt` is an ISO
- * timestamp string (stored into a timestamptz) or null to remove the lock. */
-export async function setQuotaRegistrationLock(
-  certificationId: number,
-  battalionId: number,
-  lockAt: string | null
-): Promise<number> {
-  const result = await execute(
-    `UPDATE certification_battalion_quotas SET registration_lock_at = $1
-      WHERE certification_id = $2 AND battalion_id = $3`,
-    [lockAt, certificationId, battalionId]
-  );
-  return result.rowCount;
 }
 
 export async function listTaxes(certificationId: number): Promise<CertificationTax[]> {

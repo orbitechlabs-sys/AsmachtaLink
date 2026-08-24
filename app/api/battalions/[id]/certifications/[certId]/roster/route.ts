@@ -8,6 +8,7 @@ import {
 import { battalionRosterEntrySchema } from "@/lib/validation/roster";
 import { requireApprovedUser } from "@/lib/auth/user";
 import { denyOutOfScope, requireBattalionEditor } from "@/lib/auth/scope";
+import { REGISTRATION_LOCKED_MESSAGE } from "@/lib/utils/registration-lock";
 
 /**
  * One battalion's soldiers on one certification. This is the entry point a battalion-scoped
@@ -34,7 +35,7 @@ function refusalMessage(
         status: 409,
       };
     case "registration_locked":
-      return { error: "ההרשמה להסמכה זו נסגרה — חלף מועד הנעילה.", status: 403 };
+      return { error: REGISTRATION_LOCKED_MESSAGE, status: 403 };
   }
 }
 

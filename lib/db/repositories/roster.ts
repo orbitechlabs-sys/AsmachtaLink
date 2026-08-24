@@ -2,6 +2,7 @@ import { execute, query, queryOne, withTransaction } from "@/lib/db/client";
 import type { PoolClient } from "pg";
 import type { RosterEntry, RosterStatus } from "@/lib/types";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
+import { isRegistrationLocked } from "@/lib/utils/registration-lock";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 import type { BattalionQuotaUsage } from "@/lib/battalions/types";
@@ -128,8 +129,47 @@ export interface RosterEntryInput {
   is_reserve?: boolean;
 }
 
-export async function addRosterEntry(input: RosterEntryInput, changedByRole: string): Promise<number> {
-  return withTransaction((client) => insertRosterEntry(input, changedByRole, client));
+/**
+ * The certification's single registration deadline, read inside the caller's transaction so
+ * the check and the insert cannot straddle an editor changing the date.
+ *
+ * One column for every battalion (migration 021). The DEPRECATED per-allocation
+ * `certification_battalion_quotas.registration_lock_at` is deliberately NOT consulted — a
+ * second source would mean two answers to "is registration closed".
+ */
+async function certificationLockDate(
+  certificationId: number,
+  client?: PoolClient
+): Promise<string | null> {
+  const row = await queryOne<{ registration_lock_date: string | null }>(
+    `SELECT registration_lock_date FROM certifications WHERE id = $1`,
+    [certificationId],
+    client
+  );
+  return row?.registration_lock_date ?? null;
+}
+
+export type RosterAddResult = { ok: true; id: number } | { ok: false; reason: "registration_locked" };
+
+/**
+ * Adds a soldier from the brigade-side הסמכות screen.
+ *
+ * THE DEADLINE BINDS HERE TOO. It used to be checked only on the battalion path, so a
+ * global editor could keep registering after the date the battalions were locked out on —
+ * the deadline was really "a deadline for battalions". One certification, one date, one rule
+ * for everybody.
+ */
+export async function addRosterEntry(
+  input: RosterEntryInput,
+  changedByRole: string
+): Promise<RosterAddResult> {
+  return withTransaction<RosterAddResult>(async (client) => {
+    if (input.certification_id !== null && input.certification_id !== undefined) {
+      const lockDate = await certificationLockDate(input.certification_id, client);
+      if (isRegistrationLocked(lockDate)) return { ok: false, reason: "registration_locked" };
+    }
+    return { ok: true, id: await insertRosterEntry(input, changedByRole, client) };
+  });
 }
 
 /** The insert itself, on a caller-supplied transaction. Extracted so the quota-checked
@@ -213,9 +253,9 @@ export async function getBattalionQuotaUsage(
   certificationId: number,
   battalionId: number
 ): Promise<BattalionQuotaUsage> {
-  const [quota, used, reserveRow] = await Promise.all([
-    queryOne<{ allocated_slots: number; registration_lock_at: string | null }>(
-      `SELECT allocated_slots, registration_lock_at FROM certification_battalion_quotas
+  const [quota, used, reserveRow, lockDate] = await Promise.all([
+    queryOne<{ allocated_slots: number }>(
+      `SELECT allocated_slots FROM certification_battalion_quotas
         WHERE certification_id = $1 AND battalion_id = $2`,
       [certificationId, battalionId]
     ),
@@ -225,16 +265,18 @@ export async function getBattalionQuotaUsage(
         WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 1`,
       [certificationId, battalionId]
     ),
+    // The deadline is the certification's, not the allocation's: the same date for every
+    // battalion, so this no longer varies with `battalionId` at all.
+    certificationLockDate(certificationId),
   ]);
   const allocated = quota?.allocated_slots ?? null;
-  const lockAt = quota?.registration_lock_at ?? null;
   return {
     allocated,
     used,
     reserve: reserveRow?.c ?? 0,
     remaining: allocated === null ? null : Math.max(allocated - used, 0),
-    registration_lock_at: lockAt,
-    locked: !!lockAt && new Date(lockAt).getTime() < Date.now(),
+    registration_lock_date: lockDate,
+    locked: isRegistrationLocked(lockDate),
   };
 }
 
@@ -259,18 +301,17 @@ export async function addBattalionRosterEntry(
   changedByRole: string
 ): Promise<BattalionRosterResult> {
   return withTransaction<BattalionRosterResult>(async (client) => {
-    const quota = await queryOne<{ allocated_slots: number; registration_lock_at: string | null }>(
-      `SELECT allocated_slots, registration_lock_at FROM certification_battalion_quotas
+    const quota = await queryOne<{ allocated_slots: number }>(
+      `SELECT allocated_slots FROM certification_battalion_quotas
         WHERE certification_id = $1 AND battalion_id = $2
         FOR UPDATE`,
       [input.certification_id, input.battalion_id],
       client
     );
     if (!quota) return { ok: false, reason: "no_quota" };
-    if (
-      quota.registration_lock_at &&
-      new Date(quota.registration_lock_at).getTime() < Date.now()
-    ) {
+    // The certification's single deadline — identical for every battalion.
+    const lockDate = await certificationLockDate(input.certification_id, client);
+    if (isRegistrationLocked(lockDate)) {
       return { ok: false, reason: "registration_locked" };
     }
     if (!input.is_reserve) {
