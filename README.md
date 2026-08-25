@@ -1,3 +1,11 @@
+# ShoreshAlon (שורש אלון)
+
+Brigade-level certification and course management for חטיבה 228 — requests, quotas, rosters,
+gaps and reporting in one place. The Hebrew display name is **שורש אלון**; `ShoreshAlon` /
+`shoresh-alon` is the English identifier used in code, docs and package metadata.
+
+See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for what the system does and who uses it.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -18,7 +26,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to load [Heebo](https://fonts.google.com/specimen/Heebo) with the Hebrew and Latin subsets — the UI is Hebrew RTL throughout.
 
 ## Learn More
 

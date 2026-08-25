@@ -13,15 +13,31 @@ import { isBrigade } from "@/lib/auth/permissions";
 import { navLinksForView } from "@/lib/auth/nav";
 import { scopedBattalionIdOf } from "@/lib/auth/battalion-scope";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
+import { APP_NAME, APP_NAME_WITH_BRIGADE, pageTitle } from "@/lib/config/app";
 
 const heebo = Heebo({
   variable: "--font-sans",
   subsets: ["hebrew", "latin"],
 });
 
+const APP_DESCRIPTION = "מערכת לניהול הסמכות חטיבתיות";
+
 export const metadata: Metadata = {
-  title: "מערכת ניהול הסמכות - 228",
-  description: "מערכת לניהול הסמכות חטיבתיות",
+  // `pageTitle()` with no argument is the brand line, so the root title and every leaf
+  // route's title are formatted by the same function and cannot drift apart.
+  title: pageTitle(),
+  description: APP_DESCRIPTION,
+  // The name browsers and OS install prompts show. No PWA manifest exists in this project
+  // and this rename is not the place to add one, but `applicationName` costs nothing and is
+  // what a browser falls back to.
+  applicationName: APP_NAME,
+  openGraph: {
+    title: APP_NAME_WITH_BRIGADE,
+    description: APP_DESCRIPTION,
+    siteName: APP_NAME,
+    locale: "he_IL",
+    type: "website",
+  },
 };
 
 export default async function RootLayout({

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { pageTitle } from "@/lib/config/app";
 import { AuthCard } from "@/components/auth/auth-card";
 import { ResetRequestForm } from "@/components/auth/reset-request-form";
 
 export const metadata: Metadata = {
-  title: "איפוס סיסמה · מערכת ניהול הסמכות",
+  title: pageTitle("איפוס סיסמה"),
 };
 
 export default function ResetPasswordPage() {

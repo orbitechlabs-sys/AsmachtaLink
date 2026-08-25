@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageTitle } from "@/lib/config/app";
 import { redirect } from "next/navigation";
 import { Clock, ShieldX } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/user";
@@ -8,7 +9,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "החשבון ממתין לאישור · מערכת ניהול הסמכות",
+  title: pageTitle("החשבון ממתין לאישור"),
 };
 
 export default async function PendingPage() {

@@ -10,6 +10,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAuthRoute } from "@/lib/auth/routes";
 import type { NavLink } from "@/lib/auth/nav";
 import { cn } from "@/lib/utils";
+import { APP_NAME, APP_NAME_WITH_BRIGADE } from "@/lib/config/app";
 
 /**
  * `links` is resolved on the server from the authenticated user's row (see
@@ -42,11 +43,11 @@ export function MainNav({
             `w-auto` keep that aspect ratio at every breakpoint. */}
         <Link href="/calendar" className="flex items-center gap-2 shrink-0">
           <span className="font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent">
-            מערכת ניהול הסמכות · 228
+            {APP_NAME_WITH_BRIGADE}
           </span>
           <Image
             src="/logo228.png"
-            alt="לוגו 228 · מערכת ניהול הסמכות"
+            alt={`לוגו 228 · ${APP_NAME}`}
             width={500}
             height={678}
             priority

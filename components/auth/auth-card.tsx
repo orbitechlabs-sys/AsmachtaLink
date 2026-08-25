@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { APP_NAME, APP_NAME_WITH_BRIGADE } from "@/lib/config/app";
 
 /** Centered card shell shared by all auth pages (RTL inherited from root layout). */
 export function AuthCard({
@@ -27,7 +28,7 @@ export function AuthCard({
         <div className="flex justify-center">
           <Image
             src="/logo228.png"
-            alt="לוגו 228 · מערכת ניהול הסמכות"
+            alt={`לוגו 228 · ${APP_NAME}`}
             width={500}
             height={678}
             priority
@@ -39,7 +40,7 @@ export function AuthCard({
           className="flex items-center justify-center gap-2 font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent"
         >
           <ShieldCheck className="size-6 text-primary" />
-          מערכת ניהול הסמכות · 228
+          {APP_NAME_WITH_BRIGADE}
         </Link>
         <Card className="w-full">
           <CardHeader className="text-center">

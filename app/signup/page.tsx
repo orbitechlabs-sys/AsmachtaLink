@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { pageTitle } from "@/lib/config/app";
 import { AuthCard } from "@/components/auth/auth-card";
 import { SignupForm } from "@/components/auth/signup-form";
 
 export const metadata: Metadata = {
-  title: "הרשמה · מערכת ניהול הסמכות",
+  title: pageTitle("הרשמה"),
 };
 
 export default function SignupPage() {

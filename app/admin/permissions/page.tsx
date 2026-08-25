@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageTitle } from "@/lib/config/app";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/user";
 import { canManageUsers } from "@/lib/auth/permissions";
@@ -9,7 +10,7 @@ import { UsersManager } from "@/components/admin/users-manager";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "ניהול הרשאות · מערכת ניהול הסמכות",
+  title: pageTitle("ניהול הרשאות"),
 };
 
 export default async function PermissionsPage() {
