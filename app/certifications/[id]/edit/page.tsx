@@ -15,7 +15,7 @@ import { randomPaletteColor } from "@/lib/utils/palette";
 import { getCurrentUser } from "@/lib/auth/user";
 import { canEdit } from "@/lib/auth/permissions";
 import { CertificationForm } from "@/components/certifications/certification-form";
-import { CertificationFilesSection } from "@/components/certifications/certification-files-section";
+import { CertificationFiles } from "@/components/certifications/certification-files";
 
 export const dynamic = "force-dynamic";
 
@@ -80,9 +80,18 @@ export default async function EditCertificationPage({
         }}
       />
 
-      {/* Attachments live on the saved certification, so they only appear here (edit
-          mode) and only for users who may edit — same guard as the API routes. */}
-      {canEdit(me) && <CertificationFilesSection certificationId={cert.id} files={files} />}
+      {/* Same shared component the detail page uses — one source of truth for the file
+          list and the upload/delete flow. Shown only to users who may edit, matching
+          the guard the API routes enforce server-side. `max-w-2xl` keeps it aligned
+          with the form above it. */}
+      {canEdit(me) && (
+        <CertificationFiles
+          certificationId={cert.id}
+          files={files}
+          canManage
+          className="max-w-2xl"
+        />
+      )}
     </div>
   );
 }

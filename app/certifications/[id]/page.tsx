@@ -22,10 +22,10 @@ import { DeleteCertificationButton } from "@/components/certifications/delete-ce
 import { ConfirmCompletionPanel } from "@/components/certifications/confirm-completion-panel";
 import { StatusHistoryTimeline } from "@/components/audit/status-history-timeline";
 import { TaxList } from "@/components/certifications/tax-list";
-import { CertificationFilesList } from "@/components/certifications/certification-files-list";
+import { CertificationFiles } from "@/components/certifications/certification-files";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
 import { todayIsoDate } from "@/lib/utils/registration-lock";
-import { Paperclip, Pencil, Plus, Printer } from "lucide-react";
+import { Pencil, Plus, Printer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -207,25 +207,11 @@ export default async function CertificationDetailPage({
         )}
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">
-            קבצים מצורפים
-            {files.length > 0 && (
-              <span className="text-muted-foreground font-normal text-sm"> ({files.length})</span>
-            )}
-          </h2>
-          {canEditData && (
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/certifications/${cert.id}/edit`}>
-                <Paperclip className="size-4" />
-                ניהול קבצים
-              </Link>
-            </Button>
-          )}
-        </div>
-        <CertificationFilesList files={files} />
-      </div>
+      {/* Attachments are managed inline here — the shared component owns the heading,
+          the list, the upload control and the delete flow, so this page and the edit
+          page behave identically. Editors upload without leaving the detail page;
+          everyone else still sees the list, read-only. */}
+      <CertificationFiles certificationId={cert.id} files={files} canManage={canEditData} />
 
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">היסטוריה</h2>
