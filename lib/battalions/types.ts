@@ -13,6 +13,9 @@ export interface BattalionQuotaUsage {
   /** The certification's single deadline, 'yyyy-MM-dd'. NULL = no deadline. Identical for
    * every battalion on that certification. */
   registration_lock_date: string | null;
+  /** The closing hour on that date, 0-23 Israel wall-clock. NULL = end of the lock day.
+   * Carried alongside the date so the countdown and the lock check agree on one moment. */
+  registration_lock_hour: number | null;
   /** True once the registration deadline has passed. */
   locked: boolean;
 }
@@ -37,6 +40,8 @@ export interface BattalionAllocation extends AllocationFill {
   color_hex: string | null;
   /** The certification's single deadline, 'yyyy-MM-dd'. NULL = no deadline. */
   registration_lock_date: string | null;
+  /** The closing hour on that date, 0-23 Israel wall-clock. NULL = end of the lock day. */
+  registration_lock_hour: number | null;
   remaining: number;
   reserve: number;
   daysToClose: number | null;

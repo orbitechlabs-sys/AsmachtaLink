@@ -202,6 +202,11 @@ export interface Certification {
    * ONE date for the whole certification — it applies to every battalion's allocation
    * alike. See lib/utils/registration-lock.ts. */
   registration_lock_date: string | null;
+  /** The closing HOUR on that date, 0–23 Israel wall-clock, whole hours only
+   * (migration 022). NULL = end of the lock day, which is the pre-022 meaning. Never read
+   * this without the date — `lockMoment()` in lib/utils/registration-lock.ts combines the
+   * two, including the DST handling. */
+  registration_lock_hour: number | null;
   status: CertificationStatus;
   notes: string | null;
   origin_request_id: number | null;

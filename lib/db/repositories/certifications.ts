@@ -9,6 +9,7 @@ import type {
   CertificationWithCounts,
 } from "@/lib/types";
 import { ACTIVE_ROSTER_STATUSES, computeSlotsRemaining } from "@/lib/utils/slots";
+import { normalizeLockHour } from "@/lib/utils/registration-lock";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 
@@ -89,6 +90,8 @@ export interface CertificationInput {
   registration_open?: boolean;
   /** 'yyyy-MM-dd', or null for no deadline. One date for every battalion. */
   registration_lock_date?: string | null;
+  /** Closing hour on that date, 0–23 Israel wall-clock. null = end of the lock day. */
+  registration_lock_hour?: number | null;
   status?: CertificationStatus;
   notes?: string | null;
   origin_request_id?: number | null;
@@ -96,14 +99,35 @@ export interface CertificationInput {
   color_hex?: string | null;
 }
 
+/**
+ * The lock date and hour as a coherent pair, ready for storage.
+ *
+ * ONE CHOKE POINT, and it exists because the two columns can disagree in a way neither
+ * column can catch alone: an hour with no date is a deadline that no check enforces and no
+ * screen shows. Clearing the date therefore clears the hour, always — every writer goes
+ * through here rather than remembering to do it, and the CHECK in migration 022 is the
+ * backstop if one ever does not.
+ *
+ * The hour is also re-normalized to a whole 0–23 (or null) here, so a value that bypassed
+ * Zod — an internal caller, a seed script — still cannot land a fractional hour.
+ */
+function normalizeLockColumns(
+  date: string | null | undefined,
+  hour: number | null | undefined
+): { date: string | null; hour: number | null } {
+  const nextDate = date || null;
+  return { date: nextDate, hour: nextDate === null ? null : normalizeLockHour(hour) };
+}
+
 export async function createCertification(input: CertificationInput, client?: PoolClient): Promise<number> {
   const status = input.status ?? (input.registration_open ? "open" : "draft");
+  const lock = normalizeLockColumns(input.registration_lock_date, input.registration_lock_hour);
   const result = await execute(
     `INSERT INTO certifications
         (template_id, name, domain, start_date, end_date, location, total_slots, gap_row_id,
-         registration_open, registration_lock_date, status, notes, origin_request_id,
-         created_by_role, color_hex)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         registration_open, registration_lock_date, registration_lock_hour, status, notes,
+         origin_request_id, created_by_role, color_hex)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING id`,
     [
       input.template_id ?? null,
@@ -115,7 +139,8 @@ export async function createCertification(input: CertificationInput, client?: Po
       input.total_slots ?? null,
       input.gap_row_id ?? null,
       input.registration_open ? 1 : 0,
-      input.registration_lock_date || null,
+      lock.date,
+      lock.hour,
       status,
       input.notes ?? null,
       input.origin_request_id ?? null,
@@ -133,12 +158,27 @@ export async function updateCertification(id: number, input: Partial<Certificati
   const existing = await queryOne<Certification>("SELECT * FROM certifications WHERE id = $1", [id]);
   if (!existing) throw new Error("Certification not found");
 
+  // The lock is resolved as a PAIR before the UPDATE, because "keep existing" has to be
+  // decided per column but coherence has to be decided across both. Sending only a new
+  // date must not leave yesterday's hour attached to it, and sending only an hour must not
+  // invent a date — so each side falls back to the stored value, and the pair is then
+  // normalized together (a cleared date takes its hour with it).
+  const lock = normalizeLockColumns(
+    input.registration_lock_date !== undefined
+      ? input.registration_lock_date
+      : existing.registration_lock_date,
+    input.registration_lock_hour !== undefined
+      ? input.registration_lock_hour
+      : existing.registration_lock_hour
+  );
+
   await execute(
     `UPDATE certifications SET
       name = $1, domain = $2, start_date = $3, end_date = $4, location = $5, total_slots = $6, gap_row_id = $7,
-      registration_open = $8, registration_lock_date = $9, notes = $10, color_hex = $11,
+      registration_open = $8, registration_lock_date = $9, registration_lock_hour = $10,
+      notes = $11, color_hex = $12,
       updated_at = NOW()
-     WHERE id = $12`,
+     WHERE id = $13`,
   [
     input.name ?? existing.name,
     input.domain ?? existing.domain,
@@ -150,9 +190,8 @@ export async function updateCertification(id: number, input: Partial<Certificati
     input.gap_row_id !== undefined ? input.gap_row_id : existing.gap_row_id,
     input.registration_open !== undefined ? (input.registration_open ? 1 : 0) : existing.registration_open,
     // `undefined` = not sent (keep existing); `null` = explicitly cleared (no deadline).
-    input.registration_lock_date !== undefined
-      ? input.registration_lock_date || null
-      : existing.registration_lock_date,
+    lock.date,
+    lock.hour,
     input.notes ?? existing.notes,
     input.color_hex !== undefined ? input.color_hex : existing.color_hex,
     id,

@@ -14,7 +14,33 @@ import { listByCertification as listCertificationFiles } from "@/lib/db/reposito
 import { removeCertificationFiles } from "@/lib/storage/certification-files";
 import { certificationPatchSchema } from "@/lib/validation/certification";
 import { getCurrentRole } from "@/lib/auth/current-role";
+import { requireEditor } from "@/lib/auth/user";
 import { canManageCertifications } from "@/lib/auth/permissions";
+
+/**
+ * Two gates, and they are not redundant — they check different things.
+ *
+ * `requireEditor()` is the AUTHORIZATION gate: it resolves the signed-in user server-side
+ * and runs them through `canEdit()` in lib/auth/permissions.ts. This is the one that
+ * matters. `canManageCertifications(role)` reads the `active_role` COOKIE, which is a
+ * view-scope selector the client can set to anything it likes — on its own it authorizes
+ * nothing, and it was previously the only check here, so anyone could PATCH a
+ * certification (the registration lock included) by sending `active_role=brigade`.
+ *
+ * The cookie check is kept because it is still meaningful as scope: a user browsing as a
+ * battalion should not be writing brigade-level fields even if they are entitled to. It is
+ * the second gate, never the first. `canEdit()` also returns false for `editor_battalion`,
+ * which is what holds them to the lock rather than letting them move it.
+ */
+async function requireCertificationManager(): Promise<NextResponse | null> {
+  const gate = await requireEditor();
+  if (gate instanceof NextResponse) return gate;
+  const role = await getCurrentRole();
+  if (!canManageCertifications(role)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  return null;
+}
 
 export async function GET(
   _request: Request,
@@ -35,10 +61,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const role = await getCurrentRole();
-  if (!canManageCertifications(role)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const denied = await requireCertificationManager();
+  if (denied) return denied;
   const { id } = await params;
   const body = await request.json();
   const parsed = certificationPatchSchema.safeParse(body);
@@ -61,10 +85,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const role = await getCurrentRole();
-  if (!canManageCertifications(role)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const denied = await requireCertificationManager();
+  if (denied) return denied;
   const { id } = await params;
   // certification_files rows go away via ON DELETE CASCADE, so collect the storage
   // paths first and drop the objects too — otherwise the bucket keeps orphans.

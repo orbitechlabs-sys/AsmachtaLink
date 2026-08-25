@@ -61,7 +61,10 @@ function quotaOf(a: BattalionAllocation): BattalionQuotaUsage {
     reserve: a.reserve,
     remaining: a.remaining,
     registration_lock_date: a.registration_lock_date,
-    locked: isRegistrationLocked(a.registration_lock_date),
+    registration_lock_hour: a.registration_lock_hour,
+    // The lock now turns on a date AND an hour, so the whole allocation row goes in — the
+    // date alone would keep the row reading "open" for up to a day past the closing hour.
+    locked: isRegistrationLocked(a),
   };
 }
 

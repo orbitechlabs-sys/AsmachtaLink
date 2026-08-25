@@ -66,6 +66,7 @@ export default async function BattalionDetailPage({
       total_slots: a.allocated_slots,
       registration_open: 0,
       registration_lock_date: a.registration_lock_date,
+      registration_lock_hour: a.registration_lock_hour,
       status: a.status,
       notes: null,
       origin_request_id: null,

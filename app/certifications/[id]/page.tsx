@@ -24,7 +24,7 @@ import { StatusHistoryTimeline } from "@/components/audit/status-history-timelin
 import { TaxList } from "@/components/certifications/tax-list";
 import { CertificationFiles } from "@/components/certifications/certification-files";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
-import { todayIsoDate } from "@/lib/utils/registration-lock";
+import { isRegistrationLocked } from "@/lib/utils/registration-lock";
 import { Pencil, Plus, Printer } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +55,9 @@ export default async function CertificationDetailPage({
   const files = await withSignedUrls(fileRows).catch(() =>
     fileRows.map((f) => ({ ...f, signed_url: null }))
   );
+  // One instant for the whole render, so the lock state and the countdown seed cannot be
+  // taken a few milliseconds apart and disagree about an hour boundary.
+  const renderedAt = new Date();
   const canManage = canManageCertifications(role) && canEdit(me);
   const canEditData = canEdit(me);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
@@ -153,14 +156,19 @@ export default async function CertificationDetailPage({
 
       {cert.notes && <p className="text-sm text-muted-foreground">{cert.notes}</p>}
 
+      {/* The lock is a date + hour moment (migration 022). `locked` is decided here, on the
+          server, against the same moment the write endpoints enforce — the client is given
+          the answer rather than recomputing it. `serverNowMs` seeds the countdown so its
+          first client render matches this one. */}
       <QuotaRegistrationPanel
         certificationId={cert.id}
         quotas={quotas}
         battalions={battalions}
         canManage={canManage}
         myBattalionId={myBattalionId}
-        registrationLockDate={cert.registration_lock_date}
-        today={todayIsoDate()}
+        lock={cert}
+        locked={isRegistrationLocked(cert, renderedAt)}
+        serverNowMs={renderedAt.getTime()}
       />
 
       <div className="space-y-3">

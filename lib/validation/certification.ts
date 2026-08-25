@@ -38,6 +38,25 @@ export const certificationSchema = z.object({
       .regex(/^\d{4}-\d{2}-\d{2}$/, "מועד נעילת ההרשמה אינו תקין")
       .nullish()
   ),
+  /** The closing HOUR on that date, 0–23 Israel wall-clock (migration 022). NULL = end of
+   * the lock day, the pre-022 meaning.
+   *
+   * WHOLE HOURS ONLY, enforced here as well as by the column's CHECK: `.int()` turns away
+   * 17.5, and a "17:30" from a stray `<input type="time">` coerces to NaN and is rejected
+   * rather than truncated. Truncating would be the dangerous outcome — a deadline quietly
+   * moved half an hour earlier than what was typed.
+   *
+   * An empty string is coerced to null, because that is what a cleared select sends and
+   * "no hour" is a legitimate state. */
+  registration_lock_hour: z.preprocess(
+    (v) => (v === "" || v === null ? null : v),
+    z.coerce
+      .number()
+      .int("שעת נעילת ההרשמה חייבת להיות שעה שלמה")
+      .min(0, "שעת נעילת ההרשמה אינה תקינה")
+      .max(23, "שעת נעילת ההרשמה אינה תקינה")
+      .nullish()
+  ),
   notes: z.string().nullish(),
   color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "צבע לא תקין").nullish(),
   prerequisites: z.array(z.string()).default([]),
@@ -49,6 +68,23 @@ export const certificationSchema = z.object({
     .default([]),
 });
 
+/** An hour with no date is not a deadline — there is nothing for it to be an hour OF, and
+ * the lock check would ignore it while the UI had nowhere to show it. Rejected rather than
+ * silently dropped so a client bug surfaces as a 400 instead of a deadline that vanished.
+ * The repository normalizes the same case as a second line of defence. */
+function checkLockHourHasDate(
+  data: { registration_lock_date?: string | null; registration_lock_hour?: number | null },
+  ctx: z.RefinementCtx
+) {
+  if (data.registration_lock_date === null && typeof data.registration_lock_hour === "number") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["registration_lock_hour"],
+      message: "לא ניתן לקבוע שעת נעילה ללא מועד נעילה",
+    });
+  }
+}
+
 /** Requires a positive capacity unless "unlimited" is set. Used for create (POST)
  * and the form resolver (create + edit). */
 export const certificationCreateSchema = certificationSchema.superRefine((data, ctx) => {
@@ -59,6 +95,7 @@ export const certificationCreateSchema = certificationSchema.superRefine((data, 
       message: "יש להזין מספר מקומות או לסמן “אין מגבלה”",
     });
   }
+  checkLockHourHasDate(data, ctx);
 });
 
 /** Partial variant for PATCH. Only enforces the capacity rule when the caller
@@ -71,6 +108,7 @@ export const certificationPatchSchema = certificationSchema.partial().superRefin
       message: "יש להזין מספר מקומות או לסמן “אין מגבלה”",
     });
   }
+  checkLockHourHasDate(data, ctx);
 });
 
 export type CertificationFormValues = z.infer<typeof certificationSchema>;

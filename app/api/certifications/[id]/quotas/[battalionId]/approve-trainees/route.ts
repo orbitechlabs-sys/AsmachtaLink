@@ -43,11 +43,12 @@ export async function POST(
   if (!quota) {
     return NextResponse.json({ error: "no allocation for this battalion" }, { status: 404 });
   }
-  // Server-side deadline enforcement (authoritative — not the client clock). The date is
-  // the certification's single `registration_lock_date`, so brigade and battalion are held
-  // to the same moment; the DEPRECATED per-allocation column is not consulted.
+  // Server-side deadline enforcement (authoritative — not the client clock). The deadline
+  // is the certification's single `registration_lock_date` + `registration_lock_hour`, so
+  // brigade and battalion are held to the same moment, down to the hour; the DEPRECATED
+  // per-allocation column is not consulted.
   const cert = await getCertificationById(certId);
-  if (isRegistrationLocked(cert?.registration_lock_date)) {
+  if (isRegistrationLocked(cert)) {
     return NextResponse.json(
       { error: REGISTRATION_LOCKED_MESSAGE, reason: "registration_locked" },
       { status: 403 }

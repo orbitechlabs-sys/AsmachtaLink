@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, Lock } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
 import { getCertificationById, listPrerequisites } from "@/lib/db/repositories/certifications";
 import {
@@ -14,7 +14,7 @@ import { CertificationStatusBadge } from "@/components/certifications/status-bad
 import { DateRange } from "@/components/ui/date-range";
 import { BattalionRosterPanel } from "@/components/battalions/battalion-roster-panel";
 import { getWeekNumber, getHebrewDayRangeLabel } from "@/lib/utils/dates";
-import { formatLockDate } from "@/lib/utils/registration-lock";
+import { RegistrationLockCountdown } from "@/components/certifications/registration-lock-countdown";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +49,8 @@ export default async function BattalionCertificationPage({
   ]);
   // `editor_battalion` for their own battalion, or any global editor/admin.
   const canEdit = canEditBattalion(me, battalion.id);
+  // One render instant, shared by the countdown seed and anything else time-dependent.
+  const renderedAt = new Date();
 
   return (
     <div className="space-y-6">
@@ -114,12 +116,12 @@ export default async function BattalionCertificationPage({
         </p>
       )}
 
-      {quota.registration_lock_date && !quota.locked && (
-        <p className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
-          <Lock className="size-4" />
-          מועד נעילת ההרשמה: {formatLockDate(quota.registration_lock_date)}
-        </p>
-      )}
+      {/* The battalion-facing countdown. `quota` carries the certification's single lock
+          (date + hour) — the same moment every battalion is held to — so this is the shared
+          deadline seen from here, not a per-battalion one. The component renders its own
+          closed state once the moment passes, so it is not gated on `!quota.locked`; the
+          older date-only line was, and simply vanished at the deadline. */}
+      <RegistrationLockCountdown lock={quota} serverNowMs={renderedAt.getTime()} />
 
       {/* Free-text notes routinely name other units ("גדוד 6228: 2 מקומות בעתודה"), so they
           are brigade-side information and stay out of a scoped user's copy of the page. */}

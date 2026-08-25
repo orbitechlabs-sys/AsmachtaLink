@@ -32,6 +32,8 @@ export interface BattalionCertificationSummary {
   remaining: number | null;
   /** The certification's single registration deadline, 'yyyy-MM-dd'. NULL = none. */
   registration_lock_date: string | null;
+  /** The closing hour on that date, 0-23 Israel wall-clock. NULL = end of the lock day. */
+  registration_lock_hour: number | null;
 }
 
 /** One profession row of "פערי הסמכות", reduced to this battalion's numbers. */
@@ -75,11 +77,12 @@ async function battalionCertifications(
     status: CertificationStatus;
     allocated_slots: number | null;
     registration_lock_date: string | null;
+    registration_lock_hour: number | null;
     registered: number;
     reserve: number;
   }>(
     `SELECT c.id as certification_id, c.name, c.location, c.start_date, c.end_date, c.status,
-            q.allocated_slots, c.registration_lock_date,
+            q.allocated_slots, c.registration_lock_date, c.registration_lock_hour,
             (SELECT COUNT(*)::int FROM roster_entries re
               WHERE re.certification_id = c.id AND re.battalion_id = $1
                 AND re.is_reserve = 0 AND re.status = ANY($2::text[])) as registered,

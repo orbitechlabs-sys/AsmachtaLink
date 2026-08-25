@@ -22,7 +22,7 @@ import type { RosterEntry } from "@/lib/types";
 import type { BattalionQuotaUsage } from "@/lib/battalions/types";
 import { SoldierSearch } from "@/components/battalions/soldier-search";
 import type { SoldierLookupRow } from "@/lib/force-structure/types";
-import { formatLockDate } from "@/lib/utils/registration-lock";
+import { formatLockMoment } from "@/lib/utils/registration-lock";
 
 interface Draft {
   full_name: string;
@@ -91,6 +91,9 @@ export function BattalionRosterPanel({
   const base = `/api/battalions/${battalionId}/certifications/${certificationId}/roster`;
   const noAllocation = quota.allocated === null;
   const full = quota.remaining !== null && quota.remaining < 1;
+  // The full deadline, date + hour — a battalion told only the date would not know which
+  // hour of it they were locked out at.
+  const lockMoment = formatLockMoment(quota);
   // With the allocation full the only way left in is the עתודה, which by design sits
   // outside it — so a new row starts pre-marked as reserve.
   const startsAsReserve = full;
@@ -199,7 +202,7 @@ export function BattalionRosterPanel({
         <p className="text-sm rounded-md border border-rose-200 bg-rose-50 p-2.5 text-rose-800 inline-flex items-center gap-1.5">
           <Lock className="size-4" />
           ההרשמה נסגרה — חלף מועד הנעילה
-          {quota.registration_lock_date ? ` (${formatLockDate(quota.registration_lock_date)})` : ""}
+          {lockMoment ? ` (${lockMoment})` : ""}
           .
         </p>
       )}

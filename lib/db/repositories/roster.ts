@@ -2,7 +2,7 @@ import { execute, query, queryOne, withTransaction } from "@/lib/db/client";
 import type { PoolClient } from "pg";
 import type { RosterEntry, RosterStatus } from "@/lib/types";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
-import { isRegistrationLocked } from "@/lib/utils/registration-lock";
+import { isRegistrationLocked, type RegistrationLockFields } from "@/lib/utils/registration-lock";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 import type { BattalionQuotaUsage } from "@/lib/battalions/types";
@@ -130,23 +130,28 @@ export interface RosterEntryInput {
 }
 
 /**
- * The certification's single registration deadline, read inside the caller's transaction so
- * the check and the insert cannot straddle an editor changing the date.
+ * The certification's single registration deadline — DATE AND HOUR — read inside the
+ * caller's transaction so the check and the insert cannot straddle an editor changing it.
  *
- * One column for every battalion (migration 021). The DEPRECATED per-allocation
- * `certification_battalion_quotas.registration_lock_at` is deliberately NOT consulted — a
- * second source would mean two answers to "is registration closed".
+ * Both columns travel together (migration 022): reading the date alone would silently
+ * reinstate the old end-of-day rule and keep registration open for up to a further day
+ * past the hour the units were given. The DEPRECATED per-allocation
+ * `certification_battalion_quotas.registration_lock_at` is still not consulted — a second
+ * source would mean two answers to "is registration closed".
  */
-async function certificationLockDate(
+async function certificationLock(
   certificationId: number,
   client?: PoolClient
-): Promise<string | null> {
-  const row = await queryOne<{ registration_lock_date: string | null }>(
-    `SELECT registration_lock_date FROM certifications WHERE id = $1`,
+): Promise<RegistrationLockFields> {
+  const row = await queryOne<RegistrationLockFields>(
+    `SELECT registration_lock_date, registration_lock_hour FROM certifications WHERE id = $1`,
     [certificationId],
     client
   );
-  return row?.registration_lock_date ?? null;
+  return {
+    registration_lock_date: row?.registration_lock_date ?? null,
+    registration_lock_hour: row?.registration_lock_hour ?? null,
+  };
 }
 
 export type RosterAddResult = { ok: true; id: number } | { ok: false; reason: "registration_locked" };
@@ -165,8 +170,8 @@ export async function addRosterEntry(
 ): Promise<RosterAddResult> {
   return withTransaction<RosterAddResult>(async (client) => {
     if (input.certification_id !== null && input.certification_id !== undefined) {
-      const lockDate = await certificationLockDate(input.certification_id, client);
-      if (isRegistrationLocked(lockDate)) return { ok: false, reason: "registration_locked" };
+      const lock = await certificationLock(input.certification_id, client);
+      if (isRegistrationLocked(lock)) return { ok: false, reason: "registration_locked" };
     }
     return { ok: true, id: await insertRosterEntry(input, changedByRole, client) };
   });
@@ -253,7 +258,7 @@ export async function getBattalionQuotaUsage(
   certificationId: number,
   battalionId: number
 ): Promise<BattalionQuotaUsage> {
-  const [quota, used, reserveRow, lockDate] = await Promise.all([
+  const [quota, used, reserveRow, lock] = await Promise.all([
     queryOne<{ allocated_slots: number }>(
       `SELECT allocated_slots FROM certification_battalion_quotas
         WHERE certification_id = $1 AND battalion_id = $2`,
@@ -265,9 +270,9 @@ export async function getBattalionQuotaUsage(
         WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 1`,
       [certificationId, battalionId]
     ),
-    // The deadline is the certification's, not the allocation's: the same date for every
+    // The deadline is the certification's, not the allocation's: the same moment for every
     // battalion, so this no longer varies with `battalionId` at all.
-    certificationLockDate(certificationId),
+    certificationLock(certificationId),
   ]);
   const allocated = quota?.allocated_slots ?? null;
   return {
@@ -275,8 +280,9 @@ export async function getBattalionQuotaUsage(
     used,
     reserve: reserveRow?.c ?? 0,
     remaining: allocated === null ? null : Math.max(allocated - used, 0),
-    registration_lock_date: lockDate,
-    locked: isRegistrationLocked(lockDate),
+    registration_lock_date: lock.registration_lock_date,
+    registration_lock_hour: lock.registration_lock_hour ?? null,
+    locked: isRegistrationLocked(lock),
   };
 }
 
@@ -309,9 +315,11 @@ export async function addBattalionRosterEntry(
       client
     );
     if (!quota) return { ok: false, reason: "no_quota" };
-    // The certification's single deadline — identical for every battalion.
-    const lockDate = await certificationLockDate(input.certification_id, client);
-    if (isRegistrationLocked(lockDate)) {
+    // The certification's single deadline — identical for every battalion, and compared
+    // as a full date+hour moment so a registration attempted after the closing hour is
+    // refused here rather than surviving until midnight.
+    const lock = await certificationLock(input.certification_id, client);
+    if (isRegistrationLocked(lock)) {
       return { ok: false, reason: "registration_locked" };
     }
     if (!input.is_reserve) {

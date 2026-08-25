@@ -45,11 +45,12 @@ export async function listBattalionAllocations(
     color_hex: string | null;
     allocated_slots: number;
     registration_lock_date: string | null;
+    registration_lock_hour: number | null;
     registered: number;
     reserve: number;
   }>(
     `SELECT c.id AS certification_id, c.name, c.location, c.start_date, c.end_date, c.status,
-            c.color_hex, q.allocated_slots, c.registration_lock_date,
+            c.color_hex, q.allocated_slots, c.registration_lock_date, c.registration_lock_hour,
             (SELECT COUNT(*)::int FROM roster_entries re
               WHERE re.certification_id = c.id AND re.battalion_id = $1
                 AND re.is_reserve = 0 AND re.status = ANY($2::text[])) AS registered,
