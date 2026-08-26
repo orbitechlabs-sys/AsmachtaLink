@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -8,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { APP_NAME, APP_NAME_WITH_BRIGADE } from "@/lib/config/app";
+import { APP_LOGO, APP_SLOGAN } from "@/lib/config/app";
 
 /** Centered card shell shared by all auth pages (RTL inherited from root layout). */
 export function AuthCard({
@@ -23,24 +22,25 @@ export function AuthCard({
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
-        {/* Prominent brand mark above the form. Native asset is 500×678 — height-driven
-            classes with `w-auto` keep that aspect ratio at every breakpoint. */}
-        <div className="flex justify-center">
+        {/* Prominent brand mark above the form, linking home.
+            NO WORDMARK LINE UNDER IT: at this size the logo's own lettering is perfectly
+            legible, so repeating "כשירונט" directly beneath it just read as a duplicate.
+            The slogan takes that slot instead — it is the one thing the mark does not
+            already say, and login/signup is exactly where it belongs.
+            Height-driven classes with `w-auto` keep the artwork's ratio at every
+            breakpoint. */}
+        <Link href="/" className="flex flex-col items-center gap-2">
           <Image
-            src="/logo228.png"
-            alt={`לוגו 228 · ${APP_NAME}`}
-            width={500}
-            height={678}
+            src={APP_LOGO.src}
+            alt={APP_LOGO.alt}
+            width={APP_LOGO.width}
+            height={APP_LOGO.height}
             priority
-            className="h-16 sm:h-20 md:h-24 lg:h-28 w-auto"
+            className="h-24 sm:h-28 md:h-32 w-auto"
           />
-        </div>
-        <Link
-          href="/"
-          className="flex items-center justify-center gap-2 font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent"
-        >
-          <ShieldCheck className="size-6 text-primary" />
-          {APP_NAME_WITH_BRIGADE}
+          <span className="text-sm font-semibold tracking-wide text-muted-foreground">
+            {APP_SLOGAN}
+          </span>
         </Link>
         <Card className="w-full">
           <CardHeader className="text-center">

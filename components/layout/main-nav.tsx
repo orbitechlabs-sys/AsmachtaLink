@@ -10,7 +10,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAuthRoute } from "@/lib/auth/routes";
 import type { NavLink } from "@/lib/auth/nav";
 import { cn } from "@/lib/utils";
-import { APP_NAME, APP_NAME_WITH_BRIGADE } from "@/lib/config/app";
+import { APP_LOGO, APP_NAME_WITH_BRIGADE, APP_SLOGAN } from "@/lib/config/app";
 
 /**
  * `links` is resolved on the server from the authenticated user's row (see
@@ -39,17 +39,25 @@ export function MainNav({
       <div className="absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-l from-primary via-chart-2 to-chart-4" />
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 p-3">
         {/* RTL: DOM order runs right-to-left, so the logo after the title text renders
-            to its visual left. Native asset is 500×678 — height-driven classes with
-            `w-auto` keep that aspect ratio at every breakpoint. */}
+            to its visual left. Height-driven classes with `w-auto` keep the artwork's
+            aspect ratio at every breakpoint. */}
         <Link href="/calendar" className="flex items-center gap-2 shrink-0">
-          <span className="font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent">
-            {APP_NAME_WITH_BRIGADE}
+          <span className="flex flex-col leading-tight">
+            <span className="font-extrabold text-lg bg-gradient-to-l from-primary to-chart-2 bg-clip-text text-transparent">
+              {APP_NAME_WITH_BRIGADE}
+            </span>
+            {/* The slogan only appears once there is room for it — on a phone the header
+                already carries the burger, the bell and the role switcher, and a second
+                line of text there pushes the nav into a wrap. */}
+            <span className="hidden lg:block text-[11px] text-muted-foreground font-medium">
+              {APP_SLOGAN}
+            </span>
           </span>
           <Image
-            src="/logo228.png"
-            alt={`לוגו 228 · ${APP_NAME}`}
-            width={500}
-            height={678}
+            src={APP_LOGO.src}
+            alt={APP_LOGO.alt}
+            width={APP_LOGO.width}
+            height={APP_LOGO.height}
             priority
             className="h-8 md:h-10 lg:h-12 w-auto"
           />

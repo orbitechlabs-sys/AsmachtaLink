@@ -13,14 +13,16 @@ import { isBrigade } from "@/lib/auth/permissions";
 import { navLinksForView } from "@/lib/auth/nav";
 import { scopedBattalionIdOf } from "@/lib/auth/battalion-scope";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
-import { APP_NAME, APP_NAME_WITH_BRIGADE, pageTitle } from "@/lib/config/app";
+import { APP_NAME, APP_NAME_WITH_BRIGADE, APP_SLOGAN, pageTitle } from "@/lib/config/app";
 
 const heebo = Heebo({
   variable: "--font-sans",
   subsets: ["hebrew", "latin"],
 });
 
-const APP_DESCRIPTION = "מערכת לניהול הסמכות חטיבתיות";
+// The slogan doubles as the meta description — it is the one-line pitch, and keeping the
+// two in sync by construction beats maintaining a second sentence that says the same thing.
+const APP_DESCRIPTION = `${APP_SLOGAN} — מערכת לניהול הסמכות חטיבתיות`;
 
 export const metadata: Metadata = {
   // `pageTitle()` with no argument is the brand line, so the root title and every leaf

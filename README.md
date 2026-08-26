@@ -1,8 +1,13 @@
-# ShoreshAlon (שורש אלון)
+# Kshironet (כשירונט)
 
-Brigade-level certification and course management for חטיבה 228 — requests, quotas, rosters,
-gaps and reporting in one place. The Hebrew display name is **שורש אלון**; `ShoreshAlon` /
-`shoresh-alon` is the English identifier used in code, docs and package metadata.
+**כשירות בזמן אמת** — brigade-level certification and course management for חטיבה 228:
+requests, quotas, rosters, gaps and reporting in one place. The Hebrew display name is
+**כשירונט** and the slogan is **כשירות בזמן אמת**; `Kshironet` / `kshironet` is the English
+identifier used in code, docs and package metadata.
+
+Brand strings live in [lib/config/app.ts](lib/config/app.ts) — name, slogan and logo are
+defined once and imported everywhere. Logo assets are derived from `public/logo.jpeg` by
+[scripts/make-logo.mjs](scripts/make-logo.mjs).
 
 See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for what the system does and who uses it.
 
