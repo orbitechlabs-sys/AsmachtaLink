@@ -42,9 +42,15 @@ export interface BattalionAllocation extends AllocationFill {
   registration_lock_date: string | null;
   /** The closing hour on that date, 0-23 Israel wall-clock. NULL = end of the lock day. */
   registration_lock_hour: number | null;
-  remaining: number;
+  /** allocated_slots − registered, floored at 0. NULL when there is no quota. */
+  remaining: number | null;
   reserve: number;
   daysToClose: number | null;
+  /** The brigade allocated this battalion slots on the certification. */
+  has_quota: boolean;
+  /** The battalion has at least one roster row on it — reserve and inactive rows included,
+   * so this is not the same as `registered > 0`. */
+  has_roster: boolean;
   soldiers: AllocationSoldier[];
 }
 

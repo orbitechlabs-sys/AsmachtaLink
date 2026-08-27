@@ -76,15 +76,39 @@ export interface DayNameGroup {
   name: string;
   color: string;
   filled: number;
-  allocated: number;
+  /** Slots allocated to the battalion. NULL when it has no quota and is on the
+   * certification only because it has soldiers there. */
+  allocated: number | null;
   slots: NameSlot[];
+  /** The brigade allocated slots but nobody has been named yet. Painted amber — see
+   * AWAITING_NAMES below. */
+  awaitingNames?: boolean;
   onOpen?: () => void;
 }
 
 export interface WeekBarMeta {
   fill?: FillDot;
   battalionColor?: string;
+  /** Same amber state as DayNameGroup.awaitingNames, for the calendar bar. */
+  awaitingNames?: boolean;
 }
+
+/**
+ * "Allocated, nobody named yet" — one amber treatment, defined once and used by BOTH the
+ * calendar bar and the "יוצאים להסמכה" row, so the same certification cannot read as
+ * urgent in one place and ordinary in the other.
+ *
+ * It deliberately OVERRIDES the course colour. A course colour says "which course"; this
+ * says "you owe this one names", which is the more urgent fact and the reason the row is
+ * being looked at. Once a single name is on the allocation the course colour returns.
+ */
+export const AWAITING_NAMES = {
+  /** amber-100 / amber-800 / amber-400, matching the Tailwind palette used elsewhere. */
+  bg: "#fef3c7",
+  ink: "#92400e",
+  line: "#fbbf24",
+  label: "הוקצה — טרם שובצו שמות",
+} as const;
 
 export interface WeekRowProps {
   week: Date[];
@@ -213,9 +237,13 @@ export function WeekRow({
           >
             {weekBars.map(({ item, startCol, endCol, lane, isTrueStart, isTrueEnd }) => {
               const meta = metaByKey?.[item.key];
+              // Amber takes precedence over the course colour: this bar is an allocation
+              // with no names on it, which is what the battalion is here to act on.
+              const awaiting = Boolean(meta?.awaitingNames);
               const oneDay = !isMultiDay(item) && item.kind !== "influencing_factor";
               const className = cn(
-                "pointer-events-auto text-white px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",
+                "pointer-events-auto px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",
+                awaiting ? "border border-dashed font-semibold" : "text-white",
                 isTrueStart ? "rounded-s-sm" : "rounded-s-none",
                 isTrueEnd ? "rounded-e-sm" : "rounded-e-none",
                 item.kind === "training" &&
@@ -230,7 +258,8 @@ export function WeekRow({
                 gridRow: 1,
                 marginTop: lane * laneHeight,
                 height: laneHeight - 3,
-                backgroundColor: item.color,
+                backgroundColor: awaiting ? AWAITING_NAMES.bg : item.color,
+                ...(awaiting ? { color: AWAITING_NAMES.ink, borderColor: AWAITING_NAMES.line } : {}),
               } as const;
               const inner = (
                 <>
@@ -327,36 +356,63 @@ export function WeekRow({
                     <button
                       key={g.key}
                       type="button"
-                      className="flex flex-col gap-0.5 text-start"
+                      className={cn(
+                        "flex flex-col gap-0.5 text-start",
+                        // Same amber state as the calendar bar above, so one certification
+                        // never reads two different ways in the same week.
+                        g.awaitingNames && "rounded-sm border border-dashed p-1 -m-px"
+                      )}
+                      style={
+                        g.awaitingNames
+                          ? {
+                              backgroundColor: AWAITING_NAMES.bg,
+                              borderColor: AWAITING_NAMES.line,
+                            }
+                          : undefined
+                      }
                       onClick={g.onOpen}
                     >
                       <div
                         className="text-[10px] font-extrabold leading-tight px-0.5 flex items-center justify-between gap-1"
-                        style={{ color: g.color }}
+                        style={{ color: g.awaitingNames ? AWAITING_NAMES.ink : g.color }}
                       >
-                        <span>{g.name}</span>
-                        <span className="tabular-nums opacity-75">
-                          {g.filled}/{g.allocated}
-                        </span>
+                        <span className="truncate">{g.name}</span>
+                        {/* No allocation to count against means no "x/y" — showing "3/null"
+                            or "3/0" would both read as an over-filled quota. */}
+                        {g.allocated !== null && !g.awaitingNames && (
+                          <span className="tabular-nums opacity-75 shrink-0">
+                            {g.filled}/{g.allocated} שובצו
+                          </span>
+                        )}
                       </div>
-                      {g.slots.map((slot, si) =>
-                        slot.name ? (
-                          <div
-                            key={si}
-                            className="text-[10px] font-bold leading-tight rounded-sm px-1 text-white truncate"
-                            style={{ backgroundColor: g.color }}
-                            title={slot.name}
-                          >
-                            {slot.name.split(" · ")[0]}
-                          </div>
-                        ) : (
-                          <div
-                            key={si}
-                            className="text-[10px] font-semibold leading-tight rounded-sm px-1 truncate border border-dashed bg-transparent"
-                            style={{ color: g.color, borderColor: "currentColor" }}
-                          >
-                            מקום פנוי
-                          </div>
+                      {g.awaitingNames ? (
+                        <div
+                          className="text-[10px] font-bold leading-tight px-0.5"
+                          style={{ color: AWAITING_NAMES.ink }}
+                        >
+                          {AWAITING_NAMES.label}
+                          {g.allocated !== null ? ` (${g.allocated})` : ""}
+                        </div>
+                      ) : (
+                        g.slots.map((slot, si) =>
+                          slot.name ? (
+                            <div
+                              key={si}
+                              className="text-[10px] font-bold leading-tight rounded-sm px-1 text-white truncate"
+                              style={{ backgroundColor: g.color }}
+                              title={slot.name}
+                            >
+                              {slot.name.split(" · ")[0]}
+                            </div>
+                          ) : (
+                            <div
+                              key={si}
+                              className="text-[10px] font-semibold leading-tight rounded-sm px-1 truncate border border-dashed bg-transparent"
+                              style={{ color: g.color, borderColor: "currentColor" }}
+                            >
+                              מקום פנוי
+                            </div>
+                          )
                         )
                       )}
                     </button>

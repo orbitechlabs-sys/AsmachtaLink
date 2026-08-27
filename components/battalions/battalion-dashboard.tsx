@@ -10,13 +10,14 @@ import {
   startOfWeek,
   subWeeks,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
 import { BattalionRosterPanel } from "@/components/battalions/battalion-roster-panel";
 import {
   assignLanes,
+  AWAITING_NAMES,
   WeekRow,
   WeekdayHeader,
   WEEK_LANE_HEIGHT,
@@ -34,10 +35,12 @@ import type {
   BattalionTask,
   QuarterKpi,
 } from "@/lib/battalions/types";
-import { openAllocationsOf, urgencyBand } from "@/lib/battalions/open-allocations";
+import { isAwaitingNames, openAllocationsOf, urgencyBand } from "@/lib/battalions/open-allocations";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { cn } from "@/lib/utils";
+import { downloadBlob } from "@/lib/utils/download-file";
 import { isRegistrationLocked } from "@/lib/utils/registration-lock";
+import { toast } from "sonner";
 
 const MONTHS = [
   "ינואר",
@@ -69,6 +72,9 @@ function quotaOf(a: BattalionAllocation): BattalionQuotaUsage {
 }
 
 function fillDot(a: BattalionAllocation): FillDot {
+  // No quota to fill: the battalion is here because it has soldiers on the certification,
+  // so any name at all is the whole story — "full" rather than a phantom shortfall.
+  if (a.allocated_slots === null) return a.registered > 0 ? "full" : "none";
   if (a.registered >= a.allocated_slots) return "full";
   if (a.registered === 0) return "none";
   return "part";
@@ -112,6 +118,7 @@ export function BattalionDashboard({
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [showConfirmed, setShowConfirmed] = useState(false);
   const [showDoneTasks, setShowDoneTasks] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const open = useMemo(() => openAllocationsOf(allocations), [allocations]);
   const closingSoon = open.filter((a) => a.daysToClose !== null && a.daysToClose <= 3).length;
@@ -138,7 +145,11 @@ export function BattalionDashboard({
     if (item.kind !== "certification") continue;
     const a = byId.get(item.id);
     if (!a) continue;
-    metaByKey[item.key] = { fill: fillDot(a), battalionColor: battalion.color_hex };
+    metaByKey[item.key] = {
+      fill: fillDot(a),
+      battalionColor: battalion.color_hex,
+      awaitingNames: isAwaitingNames(a),
+    };
   }
 
   const nameGroupsByDay: DayNameGroup[][] = week.map((day) => {
@@ -147,19 +158,62 @@ export function BattalionDashboard({
       .filter((a) => a.start_date.slice(0, 10) === iso)
       .map((a) => {
         const names = countedNames(a);
+        // With a quota the row shows every seat, named or empty. Without one there are no
+        // seats to show, so it lists exactly the names that exist — a `?? 0` here would
+        // silently render nothing for a roster-only certification.
+        const slotCount = a.allocated_slots ?? names.length;
         return {
           key: String(a.certification_id),
           name: a.name,
           color: a.color_hex || "#6b7280",
           filled: a.registered,
           allocated: a.allocated_slots,
-          slots: Array.from({ length: a.allocated_slots }, (_, i) => ({
+          awaitingNames: isAwaitingNames(a),
+          slots: Array.from({ length: slotCount }, (_, i) => ({
             name: names[i] ?? null,
           })),
           onOpen: () => openAlloc(a.certification_id, true),
         };
       });
   });
+
+  /**
+   * Exports the week currently on screen.
+   *
+   * The bounds are the same `week` array the calendar renders, formatted with date-fns
+   * `format` (local, not `toISOString`, which would shift the boundary a day for anyone
+   * behind UTC). The server re-runs the same repository query for that range, so the PDF
+   * and the screen cannot disagree — and it re-checks authorization there, since a
+   * client-supplied battalion id is never trusted.
+   */
+  async function exportWeek() {
+    setExporting(true);
+    try {
+      const from = format(week[0], "yyyy-MM-dd");
+      const to = format(weekEnd, "yyyy-MM-dd");
+      const res = await fetch(
+        `/api/battalions/${battalion.id}/weekly-export?from=${from}&to=${to}`
+      );
+      // `res.ok` alone is not enough. An expired session is answered by the proxy with a
+      // redirect to /login, which fetch follows transparently — so a failed export arrives
+      // as a 200 full of HTML and would be saved as a .pdf the viewer cannot open. Check
+      // what actually came back.
+      const isPdf = res.headers.get("content-type")?.includes("application/pdf");
+      if (!res.ok || !isPdf) {
+        toast.error(
+          res.status === 401 || res.status === 403 || !isPdf
+            ? "ייצוא ההסמכות נכשל — ייתכן שפג תוקף ההתחברות"
+            : "ייצוא ההסמכות נכשל"
+        );
+        return;
+      }
+      downloadBlob(await res.blob(), `הסמכות_${battalion.name}_${from}.pdf`);
+    } catch {
+      toast.error("ייצוא ההסמכות נכשל");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const selected = openId != null ? byId.get(openId) : undefined;
   const openSlots = open.reduce((s, a) => s + a.remaining, 0);
@@ -339,14 +393,41 @@ export function BattalionDashboard({
         <div className="flex items-center justify-between gap-2 flex-wrap px-4 py-3 border-b">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-4 rounded-full bg-primary" />
-            <h2 className="font-bold">לוח שנה — הסמכות עם הקצאות ל{battalion.name}</h2>
+            {/* "הסמכות של" and not "עם הקצאות ל": the list now also covers certifications
+                the battalion has soldiers on without a quota row. */}
+            <h2 className="font-bold">לוח שנה — הסמכות של {battalion.name}</h2>
           </div>
-          <div className="flex gap-1.5 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 text-xs font-semibold flex-wrap">
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={exporting}
+              onClick={exportWeek}
+              title="ייצוא הסמכות הגדוד לשבוע המוצג"
+            >
+              {exporting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileDown className="size-3.5" />
+              )}
+              ייצוא ל-PDF
+            </Button>
             <span className="rounded-full px-2 py-0.5 border bg-[oklch(0.62_0.16_155_/_0.13)] border-[oklch(0.62_0.16_155_/_0.4)] text-[oklch(0.4_0.13_155)]">
               מולא
             </span>
             <span className="rounded-full px-2 py-0.5 border bg-[oklch(0.76_0.16_70_/_0.16)]">חלקי</span>
             <span className="rounded-full px-2 py-0.5 border bg-[oklch(0.62_0.24_15_/_0.12)]">אין שמות</span>
+            {/* Same amber as the bars and the "יוצאים להסמכה" row. */}
+            <span
+              className="rounded-full px-2 py-0.5 border border-dashed"
+              style={{
+                backgroundColor: AWAITING_NAMES.bg,
+                borderColor: AWAITING_NAMES.line,
+                color: AWAITING_NAMES.ink,
+              }}
+            >
+              הוקצה — טרם שובצו שמות
+            </span>
           </div>
         </div>
         <div className="p-4 space-y-2">
@@ -401,7 +482,7 @@ export function BattalionDashboard({
             onBarClick={(item) => {
               if (item.kind === "certification") openAlloc(item.id, true);
             }}
-            emptyWeekMessage="אין הסמכות עם הקצאה לגדוד בשבוע זה."
+            emptyWeekMessage="אין הסמכות לגדוד בשבוע זה."
             alignDayNumber="end"
           />
         </div>
