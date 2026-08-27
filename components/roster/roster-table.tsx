@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -13,22 +14,49 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { RosterStatusBadge } from "@/components/certifications/status-badge";
-import { Trash2, Pencil } from "lucide-react";
+import { Check, Copy, Trash2, Pencil } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils/clipboard";
+import { formatSoldierBlock, rosterEntryToCopyInput } from "@/lib/roster/copy-format";
 import type { Battalion, RosterEntry } from "@/lib/types";
 
 export function RosterTable({
   certificationId,
+  certificationName,
   entries,
   battalions,
   canManage,
 }: {
   certificationId: number;
+  /** Title line of the copied block — see lib/roster/copy-format.ts. */
+  certificationName: string;
   entries: RosterEntry[];
   battalions: Battalion[];
   canManage: boolean;
 }) {
   const router = useRouter();
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+  // Which row most recently copied, so only that row shows the check.
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clearing the timer on unmount stops a setState landing on a table the user has already
+  // navigated away from.
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
+  async function copyRow(entry: RosterEntry) {
+    const text = formatSoldierBlock(
+      rosterEntryToCopyInput(entry, certificationName, battalionMap.get(entry.battalion_id))
+    );
+    if (!(await copyToClipboard(text))) {
+      toast.error("ההעתקה נכשלה");
+      return;
+    }
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    setCopiedId(entry.id);
+    copiedTimer.current = setTimeout(() => setCopiedId(null), 1500);
+  }
 
   async function handleDelete(entryId: number) {
     if (!confirm("להסיר את החייל מההסמכה?")) return;
@@ -46,6 +74,9 @@ export function RosterTable({
       <Table>
         <TableHeader>
           <TableRow>
+            {/* Leading copy column. No heading text — the icon is self-evident and a label
+                here would widen the column for nothing. */}
+            <TableHead className="w-9" aria-label="העתקה" />
             <TableHead>שם</TableHead>
             <TableHead>מספר אישי</TableHead>
             <TableHead>גדוד</TableHead>
@@ -58,6 +89,21 @@ export function RosterTable({
         <TableBody>
           {entries.map((e) => (
             <TableRow key={e.id}>
+              <TableCell className="w-9 p-0 text-center">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => copyRow(e)}
+                  title="העתקת פרטי החייל"
+                  aria-label={`העתקת פרטי ${e.full_name}`}
+                >
+                  {copiedId === e.id ? (
+                    <Check className="size-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </Button>
+              </TableCell>
               <TableCell>{e.full_name}</TableCell>
               <TableCell>{e.personal_number}</TableCell>
               <TableCell>
@@ -86,7 +132,7 @@ export function RosterTable({
           ))}
           {entries.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+              <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                 אין חיילים רשומים עדיין.
               </TableCell>
             </TableRow>

@@ -17,6 +17,7 @@ import { QuotaRegistrationPanel } from "@/components/certifications/quota-regist
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
 import { RosterTable } from "@/components/roster/roster-table";
+import { CopyRosterButton } from "@/components/roster/copy-roster-button";
 import { CertificationStatusChanger } from "@/components/certifications/status-changer";
 import { DeleteCertificationButton } from "@/components/certifications/delete-certification-button";
 import { ConfirmCompletionPanel } from "@/components/certifications/confirm-completion-panel";
@@ -172,19 +173,30 @@ export default async function CertificationDetailPage({
       />
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="text-lg font-semibold">רשימת חיילים</h2>
-          {canEditData && (
-            <Button size="sm" asChild>
-              <Link href={`/certifications/${cert.id}/roster/new`}>
-                <Plus className="size-4" />
-                הוסף חייל
-              </Link>
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Copying is a read of what is already on screen, so it is not gated on
+                `canEditData` — a viewer forwarding the list is the main use for it.
+                `roster` only: the עתודה table below is a separate array and stays out. */}
+            <CopyRosterButton
+              certificationName={cert.name}
+              entries={roster}
+              battalions={battalions}
+            />
+            {canEditData && (
+              <Button size="sm" asChild>
+                <Link href={`/certifications/${cert.id}/roster/new`}>
+                  <Plus className="size-4" />
+                  הוסף חייל
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
         <RosterTable
           certificationId={cert.id}
+          certificationName={cert.name}
           entries={roster}
           battalions={battalions}
           canManage={canManage}
@@ -206,6 +218,7 @@ export default async function CertificationDetailPage({
         {reserve.length > 0 ? (
           <RosterTable
             certificationId={cert.id}
+            certificationName={cert.name}
             entries={reserve}
             battalions={battalions}
             canManage={canManage}
