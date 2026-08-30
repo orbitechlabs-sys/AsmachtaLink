@@ -5,20 +5,26 @@ import {
   openAllocationsOf,
   remainingAllocatedSlots,
 } from "@/lib/battalions/open-allocations";
+import { computeSlotsRemaining } from "@/lib/utils/slots";
+import { isRegistrationLocked } from "@/lib/utils/registration-lock";
 import type { CertificationStatus } from "@/lib/types";
 import type {
   AdminConfirmationRow,
   AllocationSoldier,
+  BattalionActionItems,
   BattalionAllocation,
   BattalionTask,
+  OpenToAllCertification,
   QuarterKpi,
 } from "@/lib/battalions/types";
 
 export type {
   AdminConfirmationRow,
   AllocationSoldier,
+  BattalionActionItems,
   BattalionAllocation,
   BattalionTask,
+  OpenToAllCertification,
   QuarterKpi,
 } from "@/lib/battalions/types";
 export { openAllocationsOf } from "@/lib/battalions/open-allocations";
@@ -144,6 +150,106 @@ export async function listBattalionAllocations(
     daysToClose: daysUntil(r.registration_lock_date),
     soldiers: byCert.get(r.certification_id) ?? [],
   }));
+}
+
+/**
+ * The status that means "פתוחה להרשמה". Group B is specifically the registration WINDOW
+ * being open, so it is this one status and not {@link OPEN_ALLOCATION_STATUSES}: `full`
+ * has no seats left to offer and `in_progress` has already started.
+ */
+const REGISTRATION_OPEN_STATUS = "open";
+
+/**
+ * Everything the dashboard band asks a battalion to act on, in BOTH of its forms.
+ *
+ * GROUP A — seats allocated to this battalion, still unnamed. Derived from the
+ * `allocations` the caller already fetched, through the very same `openAllocationsOf()`
+ * the KPI card and the `slot` open-task read. That is the point of taking the array as an
+ * argument rather than re-querying: three surfaces that must never disagree about whether
+ * a certification still owes names now cannot, and the band costs no extra round trip.
+ * `listBattalionTasks` above takes its allocations the same way.
+ *
+ * GROUP B — certifications open to EVERY battalion that this one has not touched. One
+ * query, listed below. It cannot overlap Group A: Group A requires a quota row and Group B
+ * requires that no quota row exists for the certification at all, so the band is
+ * deduplicated structurally rather than by a post-pass. The explicit id check at the end is
+ * a belt-and-braces guard, not the mechanism.
+ *
+ * NO N+1: one statement for Group B, none for Group A. The certification-wide registration
+ * count comes from a single pre-grouped subquery, not a correlated count per row.
+ *
+ * THE LOCK IS APPLIED IN TYPESCRIPT, ON PURPOSE. `isRegistrationLocked()` resolves the
+ * stored date+hour against Asia/Jerusalem's offset ON THAT DATE, which is DST-correct and
+ * is the single definition every write path already enforces. Re-expressing it as SQL would
+ * be a second, silently diverging lock concept — exactly what must not exist. The row count
+ * here is small (open certifications with no quotas), so filtering in memory costs nothing.
+ */
+export async function listBattalionActionItems(
+  battalionId: number,
+  allocations: BattalionAllocation[],
+  now: Date = new Date()
+): Promise<BattalionActionItems> {
+  const awaitingNames = openAllocationsOf(allocations);
+
+  const rows = await query<{
+    certification_id: number;
+    name: string;
+    location: string | null;
+    start_date: string;
+    end_date: string | null;
+    status: CertificationStatus;
+    color_hex: string | null;
+    total_slots: number | null;
+    registration_lock_date: string | null;
+    registration_lock_hour: number | null;
+    registered_total: number;
+  }>(
+    `SELECT c.id AS certification_id, c.name, c.location, c.start_date, c.end_date, c.status,
+            c.color_hex, c.total_slots, c.registration_lock_date, c.registration_lock_hour,
+            COALESCE(reg.registered_total, 0) AS registered_total
+       FROM certifications c
+       LEFT JOIN (
+         -- Certification-wide, NOT per battalion: an open-to-all cycle's capacity is shared,
+         -- so the seats left over are what every unit is competing for.
+         SELECT re.certification_id,
+                COUNT(*) FILTER (
+                  WHERE re.is_reserve = 0 AND re.status = ANY($2::text[])
+                )::int AS registered_total
+           FROM roster_entries re
+          WHERE re.certification_id IS NOT NULL
+          GROUP BY re.certification_id
+       ) reg ON reg.certification_id = c.id
+      WHERE c.status = $3::text
+        -- "Open to all battalions" is the ABSENCE of any allocation: the moment the brigade
+        -- gives even one unit a quota the cycle stops being everybody's.
+        AND NOT EXISTS (
+          SELECT 1 FROM certification_battalion_quotas q WHERE q.certification_id = c.id
+        )
+        -- Any row at all, reserve and inactive included: this battalion has already engaged
+        -- with the certification, so the band has nothing left to prompt it about.
+        AND NOT EXISTS (
+          SELECT 1 FROM roster_entries re
+           WHERE re.certification_id = c.id AND re.battalion_id = $1
+        )
+        -- NULL capacity is UNLIMITED and must survive this filter; it is never 0 and never a
+        -- sentinel. A finite capacity has to have a seat actually left.
+        AND (c.total_slots IS NULL OR c.total_slots > COALESCE(reg.registered_total, 0))
+      ORDER BY c.start_date ASC, c.id ASC`,
+    [battalionId, COUNTED_STATUSES, REGISTRATION_OPEN_STATUS]
+  );
+
+  const allocatedIds = new Set(awaitingNames.map((a) => a.certification_id));
+  const openToAll: OpenToAllCertification[] = rows
+    .filter((r) => !isRegistrationLocked(r, now) && !allocatedIds.has(r.certification_id))
+    .map((r) => ({
+      ...r,
+      // NULL propagates as "unlimited" rather than collapsing to a number the band would
+      // then add into a free-seat total that does not exist.
+      remaining: computeSlotsRemaining(r.total_slots, r.registered_total),
+      daysToClose: daysUntil(r.registration_lock_date, now),
+    }));
+
+  return { awaitingNames, openToAll };
 }
 
 /** `status='passed'` whose certification ended in the current quarter. */

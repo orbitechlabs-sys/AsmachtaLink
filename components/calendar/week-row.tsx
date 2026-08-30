@@ -91,6 +91,8 @@ export interface WeekBarMeta {
   battalionColor?: string;
   /** Same amber state as DayNameGroup.awaitingNames, for the calendar bar. */
   awaitingNames?: boolean;
+  /** Open to every battalion and this one has registered nobody — see OPEN_TO_ALL. */
+  openToAll?: boolean;
 }
 
 /**
@@ -108,6 +110,26 @@ export const AWAITING_NAMES = {
   ink: "#92400e",
   line: "#fbbf24",
   label: "הוקצה — טרם שובצו שמות",
+} as const;
+
+/**
+ * "Open to every battalion, and you have registered nobody" — the second thing a battalion
+ * owes an answer on.
+ *
+ * It BORROWS AWAITING_NAMES' three colours rather than picking its own. Both states mean
+ * the same thing to the unit reading the calendar — this cycle is waiting on you — so they
+ * must look identical; what separates them is the label, which is why only the label is
+ * redeclared here. Deriving the colours instead of copying the hex keeps them that way if
+ * the amber is ever retuned.
+ */
+export const OPEN_TO_ALL = {
+  bg: AWAITING_NAMES.bg,
+  ink: AWAITING_NAMES.ink,
+  line: AWAITING_NAMES.line,
+  /** The calendar legend chip. */
+  label: "פתוח לכלל הגדודים",
+  /** The dashboard band card, where there is room to say what is owed. */
+  bandLabel: "פתוח לכלל הגדודים — טרם נרשמו שמות",
 } as const;
 
 export interface WeekRowProps {
@@ -237,9 +259,10 @@ export function WeekRow({
           >
             {weekBars.map(({ item, startCol, endCol, lane, isTrueStart, isTrueEnd }) => {
               const meta = metaByKey?.[item.key];
-              // Amber takes precedence over the course colour: this bar is an allocation
-              // with no names on it, which is what the battalion is here to act on.
-              const awaiting = Boolean(meta?.awaitingNames);
+              // Amber takes precedence over the course colour: this bar is either an
+              // allocation with no names on it or a cycle open to everyone that this
+              // battalion has not joined — both are what it is here to act on.
+              const awaiting = Boolean(meta?.awaitingNames || meta?.openToAll);
               const oneDay = !isMultiDay(item) && item.kind !== "influencing_factor";
               const className = cn(
                 "pointer-events-auto px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",

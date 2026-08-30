@@ -3,6 +3,7 @@ import { getBattalionByCode } from "@/lib/db/repositories/battalions";
 import { listRequests } from "@/lib/db/repositories/requests";
 import { getBattalionSummary } from "@/lib/db/repositories/battalion-summary";
 import {
+  listBattalionActionItems,
   listBattalionAllocations,
   listBattalionTasks,
   listAdminConfirmations,
@@ -52,7 +53,14 @@ export default async function BattalionDetailPage({
       listInfluencingFactors(),
     ]);
 
-  const tasks = await listBattalionTasks(battalion.id, allocations, pendingIdentity);
+  // Both derive from `allocations`, so they run together rather than in series.
+  // AUTHORIZATION: `scope` above already 404s a battalion-scoped user asking about another
+  // battalion, and every query below is keyed to `battalion.id` from the URL — never to the
+  // `active_role` cookie, which is a display selector and is not read here.
+  const [tasks, actionItems] = await Promise.all([
+    listBattalionTasks(battalion.id, allocations, pendingIdentity),
+    listBattalionActionItems(battalion.id, allocations),
+  ]);
 
   const certItems = allocations.map((a) =>
     certificationToCalendarItem({
@@ -81,6 +89,36 @@ export default async function BattalionDetailPage({
     })
   );
 
+  // Group B is absent from `allocations` by construction — no quota row, no roster row — so
+  // without this the certification the band is pointing at would have no bar to point to.
+  // `battalions: []` is the truth: nobody is allocated, which is what makes it open to all.
+  const openToAllItems = actionItems.openToAll.map((c) =>
+    certificationToCalendarItem({
+      id: c.certification_id,
+      template_id: null,
+      name: c.name,
+      domain: null,
+      start_date: c.start_date,
+      end_date: c.end_date,
+      location: c.location,
+      total_slots: c.total_slots,
+      registration_open: 1,
+      registration_lock_date: c.registration_lock_date,
+      registration_lock_hour: c.registration_lock_hour,
+      status: c.status,
+      notes: null,
+      origin_request_id: null,
+      gap_row_id: null,
+      created_by_role: "",
+      color_hex: c.color_hex,
+      created_at: "",
+      updated_at: "",
+      registered_count: c.registered_total,
+      slots_remaining: c.remaining,
+      battalions: [],
+    })
+  );
+
   const factorItems = (
     await Promise.all(
       factors.map(async (f) => {
@@ -94,7 +132,7 @@ export default async function BattalionDetailPage({
 
   const calendarItems = [
     ...factorItems,
-    ...certItems.map((item) => ({
+    ...[...certItems, ...openToAllItems].map((item) => ({
       ...item,
       href: certificationHref(item.id),
       color: item.color || certificationColor(item.name),
@@ -106,6 +144,7 @@ export default async function BattalionDetailPage({
       battalion={battalion}
       summary={summary}
       allocations={allocations}
+      openToAll={actionItems.openToAll}
       tasks={tasks}
       adminRows={adminRows}
       quarter={quarter}
