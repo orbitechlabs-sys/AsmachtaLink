@@ -55,10 +55,12 @@ export default async function RootLayout({
   // `role` only narrows the result: it hides the two battalion-only tabs from a brigade
   // view that has selected no battalion. What the user may see at all still comes from
   // their authenticated row inside navLinksFor.
-  const navLinks = navLinksForView(me, role);
   const scopedBattalionId = scopedBattalionIdOf(me);
   const scopedBattalion =
     scopedBattalionId === null ? null : (await getBattalionById(scopedBattalionId)) ?? null;
+  // The battalion code only redirects the "גדודים" tab to the user's own page; it cannot
+  // add or remove a tab, so the security boundary stays entirely inside navLinksFor.
+  const navLinks = navLinksForView(me, role, scopedBattalion?.code ?? null);
 
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} h-full antialiased`}>

@@ -22,6 +22,9 @@ export const NAV_LINKS: NavLink[] = [
 
 export const ADMIN_LINK: NavLink = { href: "/admin/permissions", label: "ניהול הרשאות" };
 
+/** The index href, so the nav and the per-battalion rewrite below cannot drift apart. */
+const BATTALIONS_LINK_HREF = "/battalions";
+
 /**
  * Tabs that only mean anything inside a single battalion's context.
  *
@@ -60,8 +63,31 @@ export function navLinksFor(user: AppUser | null): NavLink[] {
  * without one there is nothing for those screens to show. It can only ever remove links
  * from that result, never add any, so the cookie cannot widen anybody's navigation.
  */
-export function navLinksForView(user: AppUser | null, role: Role): NavLink[] {
-  const links = navLinksFor(user);
+export function navLinksForView(
+  user: AppUser | null,
+  role: Role,
+  /** The scoped user's own battalion code, when they have one. Presentation only — it
+   * changes where the "גדודים" tab points, never which tabs exist. */
+  scopedBattalionCode?: string | null
+): NavLink[] {
+  const links = pointBattalionsAtOwn(navLinksFor(user), scopedBattalionCode);
   if (!isBrigade(role)) return links;
   return links.filter((link) => !BATTALION_ONLY_LINKS.includes(link.href));
+}
+
+/**
+ * Sends "גדודים" straight to the user's own battalion instead of the index.
+ *
+ * The index already redirects a scoped user here, so this is about not making the round
+ * trip on every click — the redirect stays as the safety net for a typed URL or a stale
+ * bookmark. The label is untouched: "גדודים" is still where they go for their battalion.
+ *
+ * A null code (no battalion assigned yet) leaves the link on the index, which is exactly
+ * where that user's Hebrew "no battalion assigned" state lives.
+ */
+function pointBattalionsAtOwn(links: NavLink[], code?: string | null): NavLink[] {
+  if (!code) return links;
+  return links.map((link) =>
+    link.href === BATTALIONS_LINK_HREF ? { ...link, href: `${BATTALIONS_LINK_HREF}/${code}` } : link
+  );
 }
