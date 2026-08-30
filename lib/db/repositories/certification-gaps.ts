@@ -142,3 +142,55 @@ export async function getGapRowSnapshot(rowId: number): Promise<GapRowSnapshotEn
     , [rowId, rowId]
   );
 }
+
+/**
+ * Battalion codes that make up the "פערי הסמכות ביחס לשיבוץ" view. This used to live as a
+ * literal in app/requests/page.tsx, where it selected the matrix's columns; it now selects
+ * the rows of the aggregate below so the battalion universe stays exactly what it was.
+ */
+export const GAP_BATTALION_CODES = ["5030", "8207", "9308", "6228", "gdsm", "hq"] as const;
+
+/** One (battalion × request type) cell with a non-zero quantity. Flat on purpose: both
+ * tab groupings on /requests are derived from this single result set. */
+export interface GapAggregateRow {
+  battalion_id: number;
+  battalion_name: string;
+  battalion_code: string;
+  battalion_color: string;
+  request_type_id: number;
+  request_type_name: string;
+  quantity: number;
+}
+
+/**
+ * The gap matrix as a flat, zero-free list — ONE query, no per-battalion or per-type
+ * follow-up. Everything /requests needs to group by battalion AND by request type comes
+ * back here; the two shapes are folded out of this array in memory (lib/gaps/groupings).
+ *
+ * `battalionId` confines the result to that battalion, so a battalion-scoped role's page
+ * payload and exports carry no other unit's numbers at all — not merely hidden ones.
+ * Omitted (global roles) → every battalion, i.e. the original behaviour.
+ *
+ * NULL gap_count is coalesced to 0 and then excluded by the `> 0` filter, which is what
+ * drops the all-zero rows the old matrix rendered as empty space.
+ */
+export async function listGapAggregate(battalionId?: number): Promise<GapAggregateRow[]> {
+  return query<GapAggregateRow>(
+    `SELECT b.id            AS battalion_id,
+            b.name          AS battalion_name,
+            b.code          AS battalion_code,
+            b.color_hex     AS battalion_color,
+            r.id            AS request_type_id,
+            r.certification_name AS request_type_name,
+            COALESCE(v.gap_count, 0)::int AS quantity
+       FROM certification_gap_values v
+       JOIN certification_gap_rows r ON r.id = v.row_id
+       JOIN battalions b ON b.id = v.battalion_id
+      WHERE b.is_active = 1
+        AND b.code = ANY($1::text[])
+        AND COALESCE(v.gap_count, 0) > 0
+        AND ($2::int IS NULL OR b.id = $2::int)
+      ORDER BY r.sort_order, r.id, b.code`,
+    [[...GAP_BATTALION_CODES], battalionId ?? null]
+  );
+}

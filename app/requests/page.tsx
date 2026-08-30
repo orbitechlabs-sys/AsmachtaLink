@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { listRequests } from "@/lib/db/repositories/requests";
 import { listBattalions } from "@/lib/db/repositories/battalions";
-import { listGapRows } from "@/lib/db/repositories/certification-gaps";
+import { listGapAggregate } from "@/lib/db/repositories/certification-gaps";
 import {
   listCertificationFamilies,
   listComputedGaps,
 } from "@/lib/db/repositories/gaps";
 import { computeGapRow } from "@/lib/gaps/compute";
+import { groupByBattalion, groupByRequestType } from "@/lib/gaps/groupings";
 import { displayFamilyForGap } from "@/lib/gaps/families";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
@@ -19,7 +20,10 @@ import {
 } from "@/lib/auth/permissions";
 import { getBattalionScope } from "@/lib/auth/scope";
 import { RequestStatusBadge } from "@/components/certifications/status-badge";
-import { CertificationGapsTable } from "@/components/requests/certification-gaps-table";
+import {
+  GapGroupsTabs,
+  GapTabProvider,
+} from "@/components/requests/gap-groups-tabs";
 import { EstablishmentGapsWidget } from "@/components/requests/establishment-gaps-widget";
 import { RequestsExportActions, REQUESTS_PAGE_CONTENT_ID } from "@/components/requests/requests-export-actions";
 import { DeleteRequestButton } from "@/components/requests/delete-request-button";
@@ -51,10 +55,13 @@ export default async function RequestsPage() {
     ? allBattalions.filter((b) => b.id === scope.battalionId)
     : allBattalions;
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
-  // "פערי הסמכות ביחס לשיבוץ": one column per battalion. A scoped role gets exactly one
-  // column — its own — and rows that carry no other battalion's numbers, so the other
+  // "פערי הסמכות ביחס לשיבוץ": ONE query for both tab groupings — no per-battalion or
+  // per-type follow-up. A scoped role's aggregate is filtered to their own battalion in
+  // SQL, from their authenticated row rather than the `active_role` cookie, so the other
   // units are absent from the payload and from the Excel/PDF exports, not merely hidden.
-  const gapRows = await listGapRows(scope?.battalionId);
+  const gapAggregate = await listGapAggregate(scope?.battalionId);
+  const gapsByBattalion = groupByBattalion(gapAggregate);
+  const gapsByRequestType = groupByRequestType(gapAggregate);
   const [computedRows, families] = scope
     ? await Promise.all([listComputedGaps(scope.battalionId), listCertificationFamilies()])
     : [[], []];
@@ -67,36 +74,39 @@ export default async function RequestsPage() {
       ...computeGapRow(r.required_count, r.held_count),
     };
   });
-  const gapBattalionCodes = ["5030", "8207", "9308", "6228", "gdsm", "hq"];
-  const gapBattalions = scope
-    ? battalions.filter((b) => b.id === scope.battalionId)
-    : battalions.filter((b) => gapBattalionCodes.includes(b.code));
 
   return (
+    <GapTabProvider>
     <div className="space-y-6">
       <RequestsExportActions
-        gapRows={gapRows}
-        gapBattalions={gapBattalions}
+        byBattalion={gapsByBattalion}
+        byRequestType={gapsByRequestType}
         requests={requests}
         battalionMap={battalionMap}
       />
 
       <div id={REQUESTS_PAGE_CONTENT_ID} className="space-y-6 bg-background">
-        <div data-pdf-atomic className="space-y-2">
-          <div className="flex items-center gap-3">
+        {/* `data-pdf-atomic` sits on the leaves, not on this wrapper: the PDF exporter
+            collects every marked node under the container, so a marked ancestor would
+            capture its marked children a second time. The tab strip is deliberately
+            outside every marked block, which is what keeps it out of the PDF. */}
+        <div className="space-y-2">
+          <div data-pdf-atomic className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo228.png" alt="חטיבה 228" className="h-10 w-auto" />
             <h1 className="text-2xl font-bold">פערי הסמכות ביחס לשיבוץ</h1>
           </div>
-          {/* Gap counts are brigade-owned figures: a scoped role reads them, never edits
-              them (the write endpoint refuses them anyway — their one write is a request). */}
-          <CertificationGapsTable
-            rows={gapRows}
-            battalions={gapBattalions}
-            canEdit={!scope && canManageCertifications(role) && canEditData}
+          {/* Grouped views of the same gap figures, replacing the mostly-zero matrix.
+              Read-only: gap counts are brigade-owned, and a scoped role never edits them
+              (the write endpoint refuses them anyway — their one write is a request). */}
+          <GapGroupsTabs
+            byBattalion={gapsByBattalion}
+            byRequestType={gapsByRequestType}
           />
           {scope && (
-            <EstablishmentGapsWidget rows={establishmentRows} families={families} />
+            <div data-pdf-atomic>
+              <EstablishmentGapsWidget rows={establishmentRows} families={families} />
+            </div>
           )}
         </div>
 
@@ -159,5 +169,6 @@ export default async function RequestsPage() {
         </div>
       </div>
     </div>
+    </GapTabProvider>
   );
 }

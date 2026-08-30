@@ -12,24 +12,29 @@ import {
   type Urgency,
   type RequestStatus,
 } from "@/lib/types";
-import type { GapRow } from "@/lib/db/repositories/certification-gaps";
+import type { GapBattalionGroup, GapRequestTypeGroup } from "@/lib/gaps/groupings";
+import { useGapTab } from "@/components/requests/gap-groups-tabs";
 import { downloadBlob } from "@/lib/utils/download-file";
 import { exportElementToPdf } from "@/lib/utils/export-pdf";
 
 const CONTENT_ID = "requests-page-content";
 
 export function RequestsExportActions({
-  gapRows,
-  gapBattalions,
+  byBattalion,
+  byRequestType,
   requests,
   battalionMap,
 }: {
-  gapRows: GapRow[];
-  gapBattalions: Battalion[];
+  byBattalion: GapBattalionGroup[];
+  byRequestType: GapRequestTypeGroup[];
   requests: BattalionRequest[];
   battalionMap: Map<number, Battalion>;
 }) {
   const [exportingPdf, setExportingPdf] = useState(false);
+  // Both exports follow the visible grouping. The PDF gets it for free — it captures the
+  // live DOM, and Radix keeps only the active panel mounted — while the Excel sheet has to
+  // pick its rows from the tab explicitly.
+  const { tab } = useGapTab();
 
   async function exportPdf() {
     setExportingPdf(true);
@@ -47,18 +52,32 @@ export function RequestsExportActions({
     const XLSX = await import("xlsx");
     const workbook = XLSX.utils.book_new();
 
-    const gapSheetRows = gapRows.map((row) => {
-      const record: Record<string, string | number> = {
-        "שם ההסמכה": row.certification_name,
-      };
-      for (const b of gapBattalions) {
-        record[b.name] = row.values[b.id] ?? 0;
-      }
-      record["סה״כ"] = row.total;
-      return record;
-    });
+    // One flat row per (גדוד × סוג דרישה) pair, ordered the way the active tab reads:
+    // battalion-major on "לפי גדוד", type-major on "לפי סוג דרישה".
+    const gapSheetRows =
+      tab === "battalion"
+        ? byBattalion.flatMap((group) =>
+            group.entries.map((entry) => ({
+              גדוד: group.battalion_name,
+              "סוג דרישה": entry.request_type_name,
+              כמות: entry.quantity,
+              "סה״כ לגדוד": group.total,
+            }))
+          )
+        : byRequestType.flatMap((group) =>
+            group.entries.map((entry) => ({
+              "סוג דרישה": group.request_type_name,
+              גדוד: entry.battalion_name,
+              כמות: entry.quantity,
+              "סה״כ לסוג": group.total,
+            }))
+          );
     const gapSheet = XLSX.utils.json_to_sheet(gapSheetRows);
-    XLSX.utils.book_append_sheet(workbook, gapSheet, "פערי הסמכות");
+    XLSX.utils.book_append_sheet(
+      workbook,
+      gapSheet,
+      tab === "battalion" ? "לפי גדוד" : "לפי סוג דרישה"
+    );
 
     const requestRows = requests.map((r) => ({
       גדוד: battalionMap.get(r.battalion_id)?.name ?? "",
