@@ -43,6 +43,12 @@ import {
   COMPLETION_OUTCOME_LABELS,
   rosterStatusLabel,
 } from "@/lib/roster/completion";
+import {
+  eligibleCount,
+  pivotSoldierSheetRows,
+  pivotSummarySheetRows,
+  sumTallies,
+} from "@/lib/reports/pivot-summary";
 import type { Battalion, PivotWidgetConfig } from "@/lib/types";
 import type {
   PivotDomainOption,
@@ -276,18 +282,9 @@ export function PivotWidgetCard({
   }
 
   const rows = report?.rows ?? null;
-  // Every headline number is a sum of the per-battalion tallies, which are themselves
-  // built from each soldier's own status — the screen, the bars and the export below
-  // cannot disagree, because they all read these same figures.
-  const totals = (rows ?? []).reduce(
-    (acc, r) => ({
-      completed_count: acc.completed_count + r.completed_count,
-      not_completed_count: acc.not_completed_count + r.not_completed_count,
-      reserve_count: acc.reserve_count + r.reserve_count,
-      total_count: acc.total_count + r.total_count,
-    }),
-    { completed_count: 0, not_completed_count: 0, reserve_count: 0, total_count: 0 }
-  );
+  // Header, chart and export all read these same per-battalion tallies through
+  // lib/reports/pivot-summary.ts, so none of the three can drift from the others.
+  const totals = sumTallies(rows ?? []);
   const percent = completionPercent(totals);
 
   /** The Excel sheet is generated from `report` — the exact object on screen — so the two
@@ -297,29 +294,10 @@ export function PivotWidgetCard({
     const XLSX = await import("xlsx");
     const workbook = XLSX.utils.book_new();
 
-    const summary = XLSX.utils.json_to_sheet(
-      (report.rows ?? []).map((r) => ({
-        גדוד: r.battalion_name,
-        [COMPLETION_OUTCOME_LABELS.completed]: r.completed_count,
-        [COMPLETION_OUTCOME_LABELS.not_completed]: r.not_completed_count,
-        [COMPLETION_OUTCOME_LABELS.reserve]: r.reserve_count,
-        "סה״כ רשומות": r.total_count,
-        "אחוז השלמה": `${completionPercent(r)}%`,
-      }))
-    );
+    const summary = XLSX.utils.json_to_sheet(pivotSummarySheetRows(report));
     XLSX.utils.book_append_sheet(workbook, summary, "סיכום");
 
-    const detail = XLSX.utils.json_to_sheet(
-      report.soldiers.map((s) => ({
-        גדוד: s.battalion_name,
-        הסמכה: s.certification_name,
-        שם: s.full_name,
-        "מספר אישי": s.personal_number,
-        סטטוס: rosterStatusLabel(s.status),
-        "השלים הסמכה": s.outcome === "completed" ? "כן" : "לא",
-        סוג: s.is_reserve === 1 ? COMPLETION_OUTCOME_LABELS.reserve : "רגיל",
-      }))
-    );
+    const detail = XLSX.utils.json_to_sheet(pivotSoldierSheetRows(report));
     XLSX.utils.book_append_sheet(workbook, detail, "פירוט חיילים");
 
     const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
@@ -567,7 +545,7 @@ export function PivotWidgetCard({
               {/* "השלימו" and not "חיילים": the figure counts soldiers whose own roster
                   status says they passed, not everyone who appears on the roster. */}
               {COMPLETION_OUTCOME_LABELS.completed} {totals.completed_count} מתוך{" "}
-              {totals.completed_count + totals.not_completed_count} ({percent}%)
+              {eligibleCount(totals)} ({percent}%)
               {totals.reserve_count > 0
                 ? ` · ${COMPLETION_OUTCOME_LABELS.reserve} ${totals.reserve_count}`
                 : ""}{" "}
