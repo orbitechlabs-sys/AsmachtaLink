@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { countSoldiersByBattalion } from "@/lib/db/repositories/certification-pivot";
+import { runPivotReport } from "@/lib/db/repositories/certification-pivot";
 import { pivotQuerySchema } from "@/lib/validation/pivot";
 import { requireApprovedUser } from "@/lib/auth/user";
 import { getBattalionScope } from "@/lib/auth/scope";
@@ -30,5 +30,5 @@ export async function POST(request: Request) {
       }
     : parsed.data;
 
-  return NextResponse.json(await countSoldiersByBattalion(filters));
+  return NextResponse.json(await runPivotReport(filters));
 }

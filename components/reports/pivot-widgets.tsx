@@ -7,15 +7,15 @@ import { Button } from "@/components/ui/button";
 import { PivotWidgetCard } from "@/components/reports/pivot-widget-card";
 import type { Battalion, SavedPivotWidget } from "@/lib/types";
 import type {
-  BattalionSoldierCount,
   PivotDomainOption,
+  PivotReport,
 } from "@/lib/db/repositories/certification-pivot";
 
-/** A saved widget plus the counts computed for it on the server, so its chart is on
+/** A saved widget plus the report computed for it on the server, so its chart is on
  * screen immediately after a page load. */
 export interface SavedWidgetView {
   widget: SavedPivotWidget;
-  rows: BattalionSoldierCount[] | null;
+  report: PivotReport | null;
 }
 
 /**
@@ -66,8 +66,9 @@ export function PivotWidgets({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          כל ווידג׳ט מציג עמודה לכל גדוד — גובה העמודה הוא מספר החיילים מאותו גדוד בהסמכות
-          שנבחרו, בטווח התאריכים שנבחר. ווידג׳ט שנשמר מוצג לכל המשתמשים.
+          כל ווידג׳ט מציג עמודה לכל גדוד — גובה העמודה היא מספר החיילים מאותו גדוד
+          שהשלימו את ההסמכות שנבחרו, לפי הסטטוס האישי שלהם. חיילים שלא השלימו ועתודה
+          מוצגים בנפרד. ווידג׳ט שנשמר מוצג לכל המשתמשים.
         </p>
         <Button size="sm" onClick={addWidget}>
           <Plus className="size-4" />
@@ -81,7 +82,7 @@ export function PivotWidgets({
         </p>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {savedWidgets.map(({ widget, rows }) => (
+          {savedWidgets.map(({ widget, report }) => (
             <PivotWidgetCard
               key={widget.id}
               savedId={widget.id}
@@ -90,7 +91,7 @@ export function PivotWidgets({
               domains={domains}
               defaultFromDate={today}
               initialConfig={widget.config}
-              initialRows={rows}
+              initialReport={report}
               onRemove={() => {}}
               onSaved={() => router.refresh()}
               onDeleted={() => router.refresh()}

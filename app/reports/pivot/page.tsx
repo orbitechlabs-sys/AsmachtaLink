@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import {
-  countSoldiersByBattalion,
+  runPivotReport,
   listDomainsWithCertifications,
 } from "@/lib/db/repositories/certification-pivot";
 import { listSavedWidgets } from "@/lib/db/repositories/pivot-widgets";
@@ -35,14 +35,14 @@ export default async function PivotReportPage() {
   const savedWidgets: SavedWidgetView[] = await Promise.all(
     saved.map(async (widget) => {
       const parsed = pivotWidgetConfigSchema.safeParse(widget.config);
-      if (!parsed.success) return { widget, rows: null };
+      if (!parsed.success) return { widget, report: null };
       const filters = scope
         ? {
             ...parsed.data,
             battalionIds: parsed.data.battalionIds.filter((id) => id === scope.battalionId),
           }
         : parsed.data;
-      return { widget, rows: await countSoldiersByBattalion(filters) };
+      return { widget, report: await runPivotReport(filters) };
     })
   );
 

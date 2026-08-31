@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   RefreshCw,
+  FileSpreadsheet,
   Save,
   Square,
   Trash2,
@@ -35,10 +36,18 @@ import { Label } from "@/components/ui/label";
 import { PivotBarChart } from "@/components/reports/pivot-bar-chart";
 import { battalionBarStyle, battalionChipStyle } from "@/lib/utils/battalion-style";
 import { cn } from "@/lib/utils";
+import { downloadBlob } from "@/lib/utils/download-file";
+import { pivotReportSchema } from "@/lib/validation/pivot";
+import {
+  completionPercent,
+  COMPLETION_OUTCOME_LABELS,
+  rosterStatusLabel,
+} from "@/lib/roster/completion";
 import type { Battalion, PivotWidgetConfig } from "@/lib/types";
 import type {
-  BattalionSoldierCount,
   PivotDomainOption,
+  PivotReport,
+  PivotSoldierRow,
 } from "@/lib/db/repositories/certification-pivot";
 
 /** Comparable fingerprint of what a widget would be saved as. Ids are sorted so merely
@@ -81,7 +90,7 @@ export function PivotWidgetCard({
   domains,
   defaultFromDate,
   initialConfig,
-  initialRows,
+  initialReport,
   onRemove,
   onSaved,
   onDeleted,
@@ -93,8 +102,8 @@ export function PivotWidgetCard({
   domains: PivotDomainOption[];
   defaultFromDate: string;
   initialConfig?: PivotWidgetConfig | null;
-  /** Counts computed on the server so a saved widget shows its chart immediately. */
-  initialRows?: BattalionSoldierCount[] | null;
+  /** Report computed on the server so a saved widget shows its chart immediately. */
+  initialReport?: PivotReport | null;
   /** Drops an in-progress widget from local state. */
   onRemove: () => void;
   /** Called after a successful save, so the board can reload from the database. */
@@ -115,7 +124,7 @@ export function PivotWidgetCard({
   const [certificationIds, setCertificationIds] = useState<number[]>(
     initialConfig?.certificationIds ?? []
   );
-  const [rows, setRows] = useState<BattalionSoldierCount[] | null>(initialRows ?? null);
+  const [report, setReport] = useState<PivotReport | null>(initialReport ?? null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -203,7 +212,10 @@ export function PivotWidgetCard({
         body: JSON.stringify(currentConfig()),
       });
       if (!res.ok) throw new Error("request failed");
-      setRows(await res.json());
+      // Parsed, not cast: the response shape changed with the completion fix, and a stale
+      // bundle talking to a new API (or the reverse) must fail loudly rather than render
+      // blank rows beside a total that does not match them.
+      setReport(pivotReportSchema.parse(await res.json()));
     } catch {
       setError("טעינת הנתונים נכשלה");
     } finally {
@@ -263,7 +275,59 @@ export function PivotWidgetCard({
     }
   }
 
-  const total = rows?.reduce((sum, r) => sum + r.soldier_count, 0) ?? 0;
+  const rows = report?.rows ?? null;
+  // Every headline number is a sum of the per-battalion tallies, which are themselves
+  // built from each soldier's own status — the screen, the bars and the export below
+  // cannot disagree, because they all read these same figures.
+  const totals = (rows ?? []).reduce(
+    (acc, r) => ({
+      completed_count: acc.completed_count + r.completed_count,
+      not_completed_count: acc.not_completed_count + r.not_completed_count,
+      reserve_count: acc.reserve_count + r.reserve_count,
+      total_count: acc.total_count + r.total_count,
+    }),
+    { completed_count: 0, not_completed_count: 0, reserve_count: 0, total_count: 0 }
+  );
+  const percent = completionPercent(totals);
+
+  /** The Excel sheet is generated from `report` — the exact object on screen — so the two
+   * cannot drift. Soldier rows carry their real Hebrew status, never a success label. */
+  async function exportExcel() {
+    if (!report) return;
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.utils.book_new();
+
+    const summary = XLSX.utils.json_to_sheet(
+      (report.rows ?? []).map((r) => ({
+        גדוד: r.battalion_name,
+        [COMPLETION_OUTCOME_LABELS.completed]: r.completed_count,
+        [COMPLETION_OUTCOME_LABELS.not_completed]: r.not_completed_count,
+        [COMPLETION_OUTCOME_LABELS.reserve]: r.reserve_count,
+        "סה״כ רשומות": r.total_count,
+        "אחוז השלמה": `${completionPercent(r)}%`,
+      }))
+    );
+    XLSX.utils.book_append_sheet(workbook, summary, "סיכום");
+
+    const detail = XLSX.utils.json_to_sheet(
+      report.soldiers.map((s) => ({
+        גדוד: s.battalion_name,
+        הסמכה: s.certification_name,
+        שם: s.full_name,
+        "מספר אישי": s.personal_number,
+        סטטוס: rosterStatusLabel(s.status),
+        "השלים הסמכה": s.outcome === "completed" ? "כן" : "לא",
+        סוג: s.is_reserve === 1 ? COMPLETION_OUTCOME_LABELS.reserve : "רגיל",
+      }))
+    );
+    XLSX.utils.book_append_sheet(workbook, detail, "פירוט חיילים");
+
+    const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    downloadBlob(
+      new Blob([wbout], { type: "application/octet-stream" }),
+      `${name.trim() || "פילוח_הסמכות"}.xlsx`
+    );
+  }
 
   return (
     <section className={cn("space-y-3 border rounded-lg p-4", isSaved && "border-primary/30")}>
@@ -497,12 +561,33 @@ export function PivotWidgetCard({
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground border-t pt-3">אין גדודים להצגה.</p>
       ) : (
-        <div className="border-t pt-3 space-y-1">
-          <p className="text-xs text-muted-foreground">
-            סה״כ {total} חיילים · {certificationIds.length} הסמכות · מ־{fromDate}
-            {toDate ? ` עד ${toDate}` : " ואילך"}
-          </p>
+        <div className="border-t pt-3 space-y-2">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              {/* "השלימו" and not "חיילים": the figure counts soldiers whose own roster
+                  status says they passed, not everyone who appears on the roster. */}
+              {COMPLETION_OUTCOME_LABELS.completed} {totals.completed_count} מתוך{" "}
+              {totals.completed_count + totals.not_completed_count} ({percent}%)
+              {totals.reserve_count > 0
+                ? ` · ${COMPLETION_OUTCOME_LABELS.reserve} ${totals.reserve_count}`
+                : ""}{" "}
+              · {certificationIds.length} הסמכות · מ־{fromDate}
+              {toDate ? ` עד ${toDate}` : " ואילך"}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs shrink-0"
+              onClick={exportExcel}
+              disabled={report === null}
+            >
+              <FileSpreadsheet className="size-3.5" />
+              ייצוא לאקסל
+            </Button>
+          </div>
           <PivotBarChart rows={rows} />
+          <SoldierBreakdown soldiers={report?.soldiers ?? []} />
         </div>
       )}
 
@@ -538,5 +623,78 @@ export function PivotWidgetCard({
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  );
+}
+
+/**
+ * Every soldier behind the bars, with their OWN status in Hebrew.
+ *
+ * This is the half of the fix that is visible: the report previously showed only totals,
+ * so a soldier marked "לא עבר הסמכה" was invisibly folded into a number that read as
+ * completions. The status column comes from `rosterStatusLabel`, which falls back to a
+ * neutral "סטטוס לא ידוע" — never to anything resembling a pass — for a legacy or empty
+ * value.
+ *
+ * Collapsed by default: the widget board is a grid of charts, and a roster of a few
+ * hundred names would bury them.
+ */
+function SoldierBreakdown({ soldiers }: { soldiers: PivotSoldierRow[] }) {
+  const [open, setOpen] = useState(false);
+  if (soldiers.length === 0) return null;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs">
+          <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+          פירוט חיילים ({soldiers.length})
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="max-h-72 overflow-y-auto border rounded-md mt-1">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-muted">
+              <tr>
+                <th className="p-1.5 text-start font-bold">שם</th>
+                <th className="p-1.5 text-start font-bold">גדוד</th>
+                <th className="p-1.5 text-start font-bold">הסמכה</th>
+                <th className="p-1.5 text-start font-bold">סטטוס</th>
+              </tr>
+            </thead>
+            <tbody>
+              {soldiers.map((s) => (
+                <tr key={s.roster_entry_id} className="border-t">
+                  <td className="p-1.5">
+                    {s.full_name}
+                    {s.is_reserve === 1 && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {COMPLETION_OUTCOME_LABELS.reserve}
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-1.5" style={{ color: s.color_hex }}>
+                    {s.battalion_name}
+                  </td>
+                  <td className="p-1.5 truncate max-w-40">{s.certification_name}</td>
+                  <td className="p-1.5">
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 font-semibold",
+                        s.outcome === "completed"
+                          ? "bg-[oklch(0.62_0.16_155_/_0.15)] text-[oklch(0.4_0.13_155)]"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {rosterStatusLabel(s.status)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

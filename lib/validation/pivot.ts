@@ -72,3 +72,47 @@ export type PivotWidgetSaveValues = z.infer<typeof pivotWidgetSaveSchema>;
 /** Route param guard: the widget id is a uuid, and a non-uuid string would otherwise
  * reach Postgres and fail the uuid cast as a 500 instead of a clean 400. */
 export const pivotWidgetIdSchema = z.string().uuid("מזהה ווידג׳ט לא תקין");
+
+// --- Report OUTPUT ------------------------------------------------------------------
+// The report response changed shape when per-soldier completion replaced the old
+// unconditional COUNT(*), so the client validates what comes back rather than casting it.
+// A stale cached bundle or a half-deployed API then degrades to a visible error instead of
+// rendering `undefined` soldiers as blank rows next to a total that does not match them.
+
+const completionOutcome = z.enum(["completed", "not_completed", "reserve"]);
+
+const battalionTally = z.object({
+  battalion_id: z.number().int(),
+  battalion_code: z.string(),
+  battalion_name: z.string(),
+  color_hex: z.string(),
+  completed_count: z.number().int().nonnegative(),
+  not_completed_count: z.number().int().nonnegative(),
+  reserve_count: z.number().int().nonnegative(),
+  total_count: z.number().int().nonnegative(),
+});
+
+const pivotSoldier = z.object({
+  roster_entry_id: z.number().int(),
+  battalion_id: z.number().int(),
+  battalion_name: z.string(),
+  color_hex: z.string(),
+  certification_id: z.number().int(),
+  certification_name: z.string(),
+  full_name: z.string(),
+  personal_number: z.string(),
+  // Loose on purpose: an unrecognized legacy value must survive the round trip so the UI
+  // can label it "סטטוס לא ידוע". Narrowing it to the RosterStatus union here would reject
+  // the whole report over one odd row.
+  status: z.string(),
+  is_reserve: z.number().int(),
+  outcome: completionOutcome,
+});
+
+/** What GET/POST /api/reports/pivot returns. */
+export const pivotReportSchema = z.object({
+  rows: z.array(battalionTally),
+  soldiers: z.array(pivotSoldier),
+});
+
+export type PivotReportValues = z.infer<typeof pivotReportSchema>;
