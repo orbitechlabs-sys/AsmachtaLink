@@ -17,6 +17,7 @@ import { RosterStatusBadge } from "@/components/certifications/status-badge";
 import { Check, Copy, Trash2, Pencil } from "lucide-react";
 import { copyToClipboard } from "@/lib/utils/clipboard";
 import { formatSoldierBlock, rosterEntryToCopyInput } from "@/lib/roster/copy-format";
+import { battalionLabel } from "@/lib/battalions/label";
 import type { Battalion, RosterEntry } from "@/lib/types";
 
 export function RosterTable({
@@ -108,7 +109,9 @@ export function RosterTable({
               <TableCell>{e.personal_number}</TableCell>
               <TableCell>
                 <span style={{ color: battalionMap.get(e.battalion_id)?.color_hex }}>
-                  {battalionMap.get(e.battalion_id)?.name ?? "-"}
+                  {/* Same resolver the copy button feeds, so the cell and the pasted
+                      "גדוד-" line can never show different text for one battalion. */}
+                  {battalionLabel(battalionMap.get(e.battalion_id), "-")}
                 </span>
               </TableCell>
               <TableCell>{e.company_platoon ?? "-"}</TableCell>

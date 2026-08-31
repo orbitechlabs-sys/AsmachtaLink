@@ -6,6 +6,7 @@ import {
   rosterEntryToCopyInput,
   type SoldierCopyInput,
 } from "@/lib/roster/copy-format";
+import { battalionLabel, battalionShortLabel, NO_BATTALION_LABEL } from "@/lib/battalions/label";
 import type { Battalion, RosterEntry } from "@/lib/types";
 
 /**
@@ -39,7 +40,7 @@ const sampleInput: SoldierCopyInput = {
   // formatter renders the sample exactly when values do exist.
   nationalId: "322377888",
   serviceType: "מילואים",
-  battalionCode: "5030",
+  battalionLabel: "5030",
 };
 
 describe("formatSoldierBlock", () => {
@@ -79,7 +80,7 @@ describe("formatSoldierBlock", () => {
       personalNumber: null,
       fullName: "שליו בן צור",
       phone: null,
-      battalionCode: null,
+      battalionLabel: null,
     }).split("\n");
     expect(lines[1]).toBe("מ.א: ");
     expect(lines[3]).toBe(`${WORD_JOINER}מספר טלפון: `);
@@ -145,9 +146,38 @@ describe("rosterEntryToCopyInput", () => {
   } as RosterEntry;
 
   const battalion = { id: 3, code: "5030", name: "גדוד 5030", color_hex: "#000", is_active: 1 } as Battalion;
+  // The real row from the database, ASCII quote and all — see lib/battalions/label.ts.
+  const gdsm = { id: 5, code: "gdsm", name: 'גדס"מ', color_hex: "#000", is_active: 1 } as Battalion;
 
-  it("maps the battalion CODE, not its name or id", () => {
-    expect(rosterEntryToCopyInput(entry, "עטלף", battalion).battalionCode).toBe("5030");
+  it("drops the redundant גדוד prefix from a numbered battalion's name", () => {
+    // The block prints its own "גדוד- ", so the name "גדוד 5030" must arrive as "5030" —
+    // the output the units already receive.
+    expect(rosterEntryToCopyInput(entry, "עטלף", battalion).battalionLabel).toBe("5030");
+  });
+
+  it("emits the Hebrew NAME for a non-numeric battalion, never its Latin code", () => {
+    // The bug: `battalion.code` is the slug "gdsm", which pasted as "גדוד- gdsm".
+    const input = rosterEntryToCopyInput(entry, "עטלף", gdsm);
+    expect(input.battalionLabel).toBe('גדס"מ');
+    expect(formatSoldierBlock(input).split("\n")[9]).toBe('גדוד- גדס"מ');
+  });
+
+  it("puts no Latin character anywhere in a non-numeric battalion's block", () => {
+    const text = formatSoldierBlock({
+      ...rosterEntryToCopyInput(entry, "עטלף", gdsm),
+      certificationName: "עטלף",
+    });
+    expect(text).not.toMatch(/[A-Za-z]/);
+  });
+
+  it("agrees with what the roster table cell renders", () => {
+    // The two surfaces differ by exactly the "גדוד " prefix the block supplies itself, so
+    // one resolver feeds both and they cannot drift apart again.
+    for (const b of [battalion, gdsm]) {
+      const cell = battalionLabel(b, "-");
+      const copied = rosterEntryToCopyInput(entry, "עטלף", b).battalionLabel;
+      expect(cell.endsWith(copied!)).toBe(true);
+    }
   });
 
   it("never derives the service type from is_reserve", () => {
@@ -158,7 +188,52 @@ describe("rosterEntryToCopyInput", () => {
     expect(formatSoldierBlock(input).split("\n")[5]).toBe("מילואים/ סדיר- ");
   });
 
-  it("survives a battalion that is not in the map", () => {
-    expect(rosterEntryToCopyInput(entry, "עטלף", undefined).battalionCode).toBeNull();
+  it("leaves the גדוד line empty for a battalion that is not in the map", () => {
+    // Empty, not "ללא גדוד": every other missing value in this block renders as a bare
+    // label, and the pasted text must keep that shape.
+    const input = rosterEntryToCopyInput(entry, "עטלף", undefined);
+    expect(input.battalionLabel).toBe("");
+    expect(formatSoldierBlock(input).split("\n")[9]).toBe("גדוד- ");
+  });
+});
+
+describe("battalionLabel / battalionShortLabel — the shared resolver", () => {
+  const numbered = { name: "גדוד 5030", code: "5030" };
+  const named = { name: 'גדס"מ', code: "gdsm" };
+
+  it("prefers the display name over the code", () => {
+    expect(battalionLabel(numbered)).toBe("גדוד 5030");
+    expect(battalionLabel(named)).toBe('גדס"מ');
+  });
+
+  it("falls back name → code → placeholder, never to an id", () => {
+    expect(battalionLabel({ name: null, code: "gdsm" })).toBe("gdsm");
+    expect(battalionLabel({ name: "  ", code: "  " })).toBe(NO_BATTALION_LABEL);
+    expect(battalionLabel(null)).toBe(NO_BATTALION_LABEL);
+    expect(battalionLabel(undefined)).toBe(NO_BATTALION_LABEL);
+    // @ts-expect-error — an id must never satisfy the label shape.
+    expect(battalionLabel({ id: 3 })).toBe(NO_BATTALION_LABEL);
+  });
+
+  it("strips the גדוד prefix only where there is one", () => {
+    expect(battalionShortLabel(numbered)).toBe("5030");
+    expect(battalionShortLabel(named)).toBe('גדס"מ');
+    expect(battalionShortLabel({ name: "מפח\"ט", code: "hq" })).toBe('מפח"ט');
+  });
+
+  it("does not collapse a name that is exactly גדוד", () => {
+    expect(battalionShortLabel({ name: "גדוד", code: "x" })).toBe("גדוד");
+    expect(battalionShortLabel({ name: "גדוד   ", code: "x" })).toBe("גדוד");
+  });
+
+  it("honours a caller-supplied fallback", () => {
+    expect(battalionLabel(null, "-")).toBe("-");
+    expect(battalionShortLabel(undefined, "")).toBe("");
+  });
+
+  it("preserves the database's ASCII quote rather than normalising it", () => {
+    // The table and the paste must match character-for-character; U+05F4 would not.
+    expect(battalionLabel(named)).toContain(String.fromCharCode(0x22));
+    expect(battalionLabel(named)).not.toContain(String.fromCharCode(0x05f4));
   });
 });

@@ -1,3 +1,4 @@
+import { battalionShortLabel } from "@/lib/battalions/label";
 import type { Battalion, RosterEntry } from "@/lib/types";
 
 /**
@@ -63,8 +64,15 @@ export interface SoldierCopyInput {
    * a message someone acts on.
    */
   serviceType?: string | null;
-  /** גדוד — the battalion's code, e.g. "5030". */
-  battalionCode: string | null;
+  /**
+   * גדוד — the battalion's label as the roster TABLE shows it, minus the redundant "גדוד "
+   * prefix this block prints itself: "5030" for a numbered unit, "גדס"מ" for a named one.
+   *
+   * It used to be the battalion's `code`, which is a Latin slug for the non-numeric units
+   * and pasted "גדוד- gdsm" into a message. Resolved by `battalionShortLabel` so this line
+   * and the table cell cannot disagree again.
+   */
+  battalionLabel: string | null;
 }
 
 /** Empty rather than a dash or placeholder: the request asks for the label followed by
@@ -84,7 +92,7 @@ export function formatSoldierBlock(input: SoldierCopyInput): string {
     `ת״ז ${value(input.nationalId)}`,
     `מילואים/ סדיר- ${value(input.serviceType)}`,
     ...COMMAND_LINES,
-    `גדוד- ${value(input.battalionCode)}`,
+    `גדוד- ${value(input.battalionLabel)}`,
   ].join("\n");
 }
 
@@ -104,6 +112,9 @@ export function rosterEntryToCopyInput(
     personalNumber: entry.personal_number,
     fullName: entry.full_name,
     phone: entry.phone,
-    battalionCode: battalion?.code ?? null,
+    // Empty fallback, not the "ללא גדוד" placeholder: an unresolvable battalion leaves the
+    // label with nothing after it, which is how every other missing value in this block
+    // behaves and what the units already receive.
+    battalionLabel: battalionShortLabel(battalion, ""),
   };
 }

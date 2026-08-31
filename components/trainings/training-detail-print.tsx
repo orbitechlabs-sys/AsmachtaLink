@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { getWeekNumber, getHebrewDayRangeLabel, getHebrewWeekdayShort } from "@/lib/utils/dates";
 import type { Battalion, Training, TrainingSession } from "@/lib/types";
+import { battalionLabel } from "@/lib/battalions/label";
 
 /** DOM id of the off-screen container captured by the training PDF export. */
 export const TRAINING_PRINT_ROOT_ID = "training-detail-print-root";
@@ -45,7 +46,9 @@ function PrintSessionCard({
         </span>
       </div>
       <div className="font-semibold text-sm mt-1">
-        גדוד {battalion?.code ?? "?"}
+        {/* The battalion's own name, not "גדוד" + its code: the code is a Latin slug for
+            the non-numeric units, which rendered "גדוד gdsm" here. */}
+        {battalionLabel(battalion, "?")}
         {session.instructor_name ? ` · ${session.instructor_name}` : ""}
       </div>
       {session.location && <div className="text-sm mt-1">{session.location}</div>}

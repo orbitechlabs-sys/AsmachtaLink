@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeCombobox, timeToMinutes } from "@/components/ui/time-combobox";
 import type { Battalion, TrainingSession } from "@/lib/types";
+import { battalionLabel } from "@/lib/battalions/label";
 
 interface Props {
   trainingId: number;
@@ -204,7 +205,9 @@ export function SessionCard({ trainingId, session, battalion, battalions, canMan
         )}
       </div>
       <div className="font-semibold text-sm mt-1">
-        גדוד {battalion?.code ?? "?"}
+        {/* The battalion's own name, not "גדוד" + its code: the code is a Latin slug for
+            the non-numeric units, which rendered "גדוד gdsm" here. */}
+        {battalionLabel(battalion, "?")}
         {session.instructor_name ? ` · ${session.instructor_name}` : ""}
       </div>
       {session.location && <div className="text-sm mt-1">{session.location}</div>}
