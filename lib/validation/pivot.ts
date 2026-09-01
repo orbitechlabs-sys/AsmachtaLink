@@ -79,15 +79,16 @@ export const pivotWidgetIdSchema = z.string().uuid("מזהה ווידג׳ט לא
 // A stale cached bundle or a half-deployed API then degrades to a visible error instead of
 // rendering `undefined` soldiers as blank rows next to a total that does not match them.
 
-const completionOutcome = z.enum(["completed", "not_completed", "reserve"]);
+const countOutcome = z.enum(["counted", "excluded", "unrecognized"]);
 
 const battalionTally = z.object({
   battalion_id: z.number().int(),
   battalion_code: z.string(),
   battalion_name: z.string(),
   color_hex: z.string(),
-  completed_count: z.number().int().nonnegative(),
-  not_completed_count: z.number().int().nonnegative(),
+  counted_count: z.number().int().nonnegative(),
+  excluded_count: z.number().int().nonnegative(),
+  unrecognized_count: z.number().int().nonnegative(),
   reserve_count: z.number().int().nonnegative(),
   total_count: z.number().int().nonnegative(),
 });
@@ -102,14 +103,14 @@ const pivotSoldier = z.object({
   full_name: z.string(),
   personal_number: z.string(),
   // Loose on purpose: an unrecognized legacy value must survive the round trip so the UI
-  // can label it "סטטוס לא ידוע". Narrowing it to the RosterStatus union here would reject
-  // the whole report over one odd row.
+  // can label it "סטטוס לא ידוע" and count it as unrecognized. Narrowing it to the
+  // RosterStatus union here would reject the whole report over one odd row.
   status: z.string(),
   is_reserve: z.number().int(),
-  outcome: completionOutcome,
+  outcome: countOutcome,
 });
 
-/** What GET/POST /api/reports/pivot returns. */
+/** What POST /api/reports/pivot returns. */
 export const pivotReportSchema = z.object({
   rows: z.array(battalionTally),
   soldiers: z.array(pivotSoldier),

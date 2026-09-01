@@ -39,12 +39,12 @@ import { cn } from "@/lib/utils";
 import { downloadBlob } from "@/lib/utils/download-file";
 import { pivotReportSchema } from "@/lib/validation/pivot";
 import {
-  completionPercent,
-  COMPLETION_OUTCOME_LABELS,
+  countedPercent,
   rosterStatusLabel,
-} from "@/lib/roster/completion";
+  PIVOT_COUNT_LABELS,
+} from "@/lib/reports/pivot-counting-rule";
 import {
-  eligibleCount,
+  denominatorOf,
   pivotSoldierSheetRows,
   pivotSummarySheetRows,
   sumTallies,
@@ -285,7 +285,7 @@ export function PivotWidgetCard({
   // Header, chart and export all read these same per-battalion tallies through
   // lib/reports/pivot-summary.ts, so none of the three can drift from the others.
   const totals = sumTallies(rows ?? []);
-  const percent = completionPercent(totals);
+  const percent = countedPercent(totals);
 
   /** The Excel sheet is generated from `report` — the exact object on screen — so the two
    * cannot drift. Soldier rows carry their real Hebrew status, never a success label. */
@@ -542,12 +542,17 @@ export function PivotWidgetCard({
         <div className="border-t pt-3 space-y-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <p className="text-xs text-muted-foreground">
-              {/* "השלימו" and not "חיילים": the figure counts soldiers whose own roster
-                  status says they passed, not everyone who appears on the roster. */}
-              {COMPLETION_OUTCOME_LABELS.completed} {totals.completed_count} מתוך{" "}
-              {eligibleCount(totals)} ({percent}%)
+              {/* "נספרו" and not "השלימו": the counted set includes in-progress statuses
+                  (נרשם, אושר), so a label promising completion would contradict the number
+                  printed beside it. The denominator is every roster entry in scope,
+                  reserve included. */}
+              {PIVOT_COUNT_LABELS.counted} {totals.counted_count} מתוך{" "}
+              {denominatorOf(totals)} ({percent}%)
               {totals.reserve_count > 0
-                ? ` · ${COMPLETION_OUTCOME_LABELS.reserve} ${totals.reserve_count}`
+                ? ` · ${PIVOT_COUNT_LABELS.reserve} ${totals.reserve_count}`
+                : ""}
+              {totals.unrecognized_count > 0
+                ? ` · ${PIVOT_COUNT_LABELS.unrecognized} ${totals.unrecognized_count}`
                 : ""}{" "}
               · {certificationIds.length} הסמכות · מ־{fromDate}
               {toDate ? ` עד ${toDate}` : " ואילך"}
@@ -647,7 +652,7 @@ function SoldierBreakdown({ soldiers }: { soldiers: PivotSoldierRow[] }) {
                     {s.is_reserve === 1 && (
                       <span className="text-muted-foreground">
                         {" "}
-                        · {COMPLETION_OUTCOME_LABELS.reserve}
+                        · {PIVOT_COUNT_LABELS.reserve}
                       </span>
                     )}
                   </td>
@@ -659,7 +664,7 @@ function SoldierBreakdown({ soldiers }: { soldiers: PivotSoldierRow[] }) {
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.5 font-semibold",
-                        s.outcome === "completed"
+                        s.outcome === "counted"
                           ? "bg-[oklch(0.62_0.16_155_/_0.15)] text-[oklch(0.4_0.13_155)]"
                           : "bg-muted text-muted-foreground"
                       )}

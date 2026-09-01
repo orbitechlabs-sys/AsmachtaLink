@@ -1,16 +1,16 @@
 import { query } from "@/lib/db/client";
 import {
-  addToTally,
-  completionOutcomeOf,
-  emptyTally,
-  type CompletionOutcome,
-  type CompletionTally,
-} from "@/lib/roster/completion";
+  addToPivotTally,
+  emptyPivotTally,
+  pivotCountOutcomeOf,
+  type PivotCountOutcome,
+  type PivotCountTally,
+} from "@/lib/reports/pivot-counting-rule";
 
 /** One battalion's column in the pivot chart. Every figure here is derived from the
- * per-soldier rows below through {@link completionOutcomeOf} — there is no separate
+ * per-soldier rows below through {@link pivotCountOutcomeOf} — there is no separate
  * aggregation rule that could disagree with the detail table. */
-export interface BattalionSoldierCount extends CompletionTally {
+export interface BattalionSoldierCount extends PivotCountTally {
   battalion_id: number;
   battalion_code: string;
   battalion_name: string;
@@ -32,7 +32,7 @@ export interface PivotSoldierRow {
    * "unknown", not be silently narrowed to a member of the union. */
   status: string;
   is_reserve: number;
-  outcome: CompletionOutcome;
+  outcome: PivotCountOutcome;
 }
 
 /** What the פילוח הסמכות report returns: the bars and the rows behind them. */
@@ -54,12 +54,14 @@ export interface PivotFilters {
  * The פילוח הסמכות report: every soldier on the selected certifications, with their own
  * roster status, plus the per-battalion tallies derived from exactly those rows.
  *
- * WHAT THIS USED TO GET WRONG. The previous version was a `COUNT(*)` over roster rows with
- * no status filter at all, so a soldier marked "לא עבר הסמכה" and a soldier marked
- * "עבר הסמכה" both added 1 to the same number, and עתודה rows were counted alongside them.
- * On a certification whose own status was "בוצעה" that read as "everyone completed it".
- * Completion is now a per-soldier decision, made in one place, for both the bars and the
- * detail table — see lib/roster/completion.ts.
+ * WHICH ROWS COUNT is a per-soldier decision taken in exactly one place —
+ * lib/reports/pivot-counting-rule.ts — and applied here to build the bars, so the chart,
+ * the header and the detail table cannot disagree. The certification's own status is never
+ * consulted: a cycle marked "בוצעה" says the cycle ran, not what any one soldier did.
+ *
+ * NOTE ON RESERVE: this report subjects a עתודה row to the same status test as any other,
+ * so reserve appears in both the numerator and the denominator here. That is this report's
+ * rule alone — capacity, quota and gaps math are untouched and still exclude reserve.
  *
  * ONE QUERY, driven off `battalions` so a selected battalion with no matching soldiers
  * still comes back as a bar of zero.
@@ -122,7 +124,7 @@ export async function runPivotReport(filters: PivotFilters): Promise<PivotReport
         battalion_code: row.battalion_code,
         battalion_name: row.battalion_name,
         color_hex: row.color_hex,
-        ...emptyTally(),
+        ...emptyPivotTally(),
       };
       tallies.set(row.battalion_id, tally);
     }
@@ -131,8 +133,8 @@ export async function runPivotReport(filters: PivotFilters): Promise<PivotReport
     // soldier to bucket.
     if (row.roster_entry_id === null || row.certification_id === null) continue;
 
-    const outcome = completionOutcomeOf(row);
-    addToTally(tally, outcome);
+    const outcome = pivotCountOutcomeOf(row);
+    addToPivotTally(tally, outcome, row.is_reserve === 1);
     soldiers.push({
       roster_entry_id: row.roster_entry_id,
       battalion_id: row.battalion_id,
