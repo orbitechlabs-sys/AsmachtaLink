@@ -61,8 +61,17 @@ function assignLanes(spans: ItemSpan[]): Map<string, number> {
   return laneOf;
 }
 
-export function YearGanttView({ items }: { items: CalendarItem[] }) {
-  const [year, setYear] = useState(new Date().getFullYear());
+export function YearGanttView({
+  items,
+  today,
+}: {
+  items: CalendarItem[];
+  /** Today in Asia/Jerusalem. The year view is year-scoped by nature, so it takes only the
+   * year from the shared anchor — but it takes it from there rather than from the host
+   * clock, so a UTC server and an Israeli client cannot disagree on New Year's Eve. */
+  today: Date;
+}) {
+  const [year, setYear] = useState(() => today.getFullYear());
   const [exporting, setExporting] = useState(false);
 
   const yearStart = new Date(year, 0, 1);

@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/repositories/influencing-factors";
 import { listBattalions } from "@/lib/db/repositories/battalions";
 import { getBattalionScope } from "@/lib/auth/scope";
+import { appTodayIso } from "@/lib/calendar/anchor";
 import { CalendarClient } from "@/components/calendar/calendar-client";
 import {
   certificationToCalendarItem,
@@ -58,7 +59,10 @@ export default async function CalendarPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">לוח שנה</h1>
-      <CalendarClient items={items} battalions={battalions} />
+      {/* Asia/Jerusalem's today, resolved here so the server's HTML and the client's first
+          render anchor to the same week — a UTC host would otherwise resolve 00:15 Israel
+          time to the previous day. */}
+      <CalendarClient items={items} battalions={battalions} todayIso={appTodayIso()} />
     </div>
   );
 }

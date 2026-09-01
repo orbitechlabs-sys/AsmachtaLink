@@ -1,27 +1,72 @@
 "use client";
 
-import { useMemo } from "react";
-import { addDays, differenceInCalendarDays, eachDayOfInterval, format, min, max } from "date-fns";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  addDays,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  format,
+  isSameDay,
+  min,
+  max,
+} from "date-fns";
 import Link from "next/link";
 import { GraduationCap } from "lucide-react";
 import { battalionBarStyle } from "@/lib/utils/battalion-style";
 import type { CalendarItem } from "@/components/calendar/types";
 import { getWeekNumber, getHebrewWeekdayShort } from "@/lib/utils/dates";
 import { compareCalendarItems } from "@/components/calendar/types";
+import { isSameCalendarWeek } from "@/lib/calendar/anchor";
 import { cn } from "@/lib/utils";
 
 const DAY_MIN_WIDTH = 40;
 const LABEL_WIDTH = 220;
 
+/**
+ * WHAT CHANGED HERE. The timeline still spans every item — narrowing it would hide bars,
+ * which is not what this fix is for — but the horizontal scroll no longer starts at the
+ * earliest certification on record. It lands on the current week.
+ *
+ * The scroll runs TWICE on purpose: once in a layout effect, and again from an effect that
+ * re-fires when `items` changes. The bars are absolutely positioned as percentages of a
+ * grid whose width depends on the day count, so a single early scroll can compute its
+ * offset before the row widths settle and silently land in the wrong place.
+ */
 export function GanttView({
   items,
+  today,
   rangeStart: rangeStartOverride,
   rangeEnd: rangeEndOverride,
 }: {
   items: CalendarItem[];
+  /** Today in Asia/Jerusalem, from the shared anchor. */
+  today: Date;
   rangeStart?: Date;
   rangeEnd?: Date;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const currentWeekRef = useRef<HTMLDivElement | null>(null);
+
+  // `inline: "center"` puts the current week in the middle of the viewport, and letting
+  // the browser do it avoids hand-computing scrollLeft — whose sign and origin differ
+  // between engines in an RTL container, which is exactly the bug this would otherwise
+  // reintroduce. `block: "nearest"` keeps the page from scrolling vertically as a side
+  // effect.
+  // Only the calendar's own live gantt auto-scrolls. When a caller pins the range — the
+  // PDF export does — the window it asked for is the window it gets, and scrolling could
+  // move the capture off it.
+  const autoScroll = !rangeStartOverride || !rangeEndOverride;
+  const scrollToCurrentWeek = () => {
+    if (!autoScroll) return;
+    currentWeekRef.current?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "auto",
+    });
+  };
+
+  useLayoutEffect(scrollToCurrentWeek, [autoScroll]);
+  useEffect(scrollToCurrentWeek, [items, today, autoScroll]);
   const { rangeStart, rangeEnd, days } = useMemo(() => {
     if (rangeStartOverride && rangeEndOverride) {
       return {
@@ -30,7 +75,6 @@ export function GanttView({
         days: eachDayOfInterval({ start: rangeStartOverride, end: rangeEndOverride }),
       };
     }
-    const today = new Date();
     if (items.length === 0) {
       const start = addDays(today, -7);
       const end = addDays(today, 30);
@@ -41,21 +85,21 @@ export function GanttView({
     const start = min([...starts, addDays(today, -7)]);
     const end = max([...ends, addDays(today, 14)]);
     return { rangeStart: start, rangeEnd: end, days: eachDayOfInterval({ start, end }) };
-  }, [items, rangeStartOverride, rangeEndOverride]);
+  }, [items, today, rangeStartOverride, rangeEndOverride]);
 
   const weekGroups = useMemo(() => {
-    const groups: { weekNumber: number; count: number }[] = [];
+    const groups: { weekNumber: number; count: number; isCurrent: boolean }[] = [];
     for (const d of days) {
       const wn = getWeekNumber(d);
       const last = groups[groups.length - 1];
       if (last && last.weekNumber === wn) {
         last.count += 1;
       } else {
-        groups.push({ weekNumber: wn, count: 1 });
+        groups.push({ weekNumber: wn, count: 1, isCurrent: isSameCalendarWeek(d, today) });
       }
     }
     return groups;
-  }, [days]);
+  }, [days, today]);
 
   if (items.length === 0) {
     return <p className="text-muted-foreground text-sm">אין פריטים להצגה בטווח זה.</p>;
@@ -65,7 +109,7 @@ export function GanttView({
   const dayColumns = `repeat(${days.length}, minmax(${DAY_MIN_WIDTH}px, 1fr))`;
 
   return (
-    <div className="overflow-x-auto border rounded-md">
+    <div ref={scrollRef} className="overflow-x-auto border rounded-md">
       <div className="w-full">
         <div className="flex sticky top-0 bg-card z-10">
           <div
@@ -81,7 +125,12 @@ export function GanttView({
             {weekGroups.map((g, i) => (
               <div
                 key={i}
-                className="text-center text-[10px] py-1 border-e bg-primary/10 text-primary font-bold"
+                className={cn(
+                  "text-center text-[10px] py-1 border-e font-bold",
+                  g.isCurrent
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-primary/10 text-primary"
+                )}
                 style={{ gridColumn: `span ${g.count}` }}
               >
                 שבוע {g.weekNumber}
@@ -95,15 +144,26 @@ export function GanttView({
             className="grid flex-1"
             style={{ gridTemplateColumns: dayColumns, minWidth: daysAreaMinWidth }}
           >
-            {days.map((d) => (
-              <div
-                key={d.toISOString()}
-                className="text-center text-[10px] py-1.5 border-e text-muted-foreground leading-tight"
-              >
-                <div className="font-medium">{getHebrewWeekdayShort(d)}</div>
-                <div>{format(d, "d/M")}</div>
-              </div>
-            ))}
+            {days.map((d) => {
+              const inCurrentWeek = isSameCalendarWeek(d, today);
+              return (
+                <div
+                  key={d.toISOString()}
+                  // The scroll target is TODAY's column, so the week is centred on the day
+                  // the user actually came to see.
+                  ref={isSameDay(d, today) ? currentWeekRef : undefined}
+                  className={cn(
+                    "text-center text-[10px] py-1.5 border-e leading-tight",
+                    inCurrentWeek
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <div className="font-medium">{getHebrewWeekdayShort(d)}</div>
+                  <div>{format(d, "d/M")}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
         {[...items].sort(compareCalendarItems).map((item) => {

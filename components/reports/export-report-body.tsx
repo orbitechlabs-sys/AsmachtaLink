@@ -11,6 +11,7 @@ import { ExportReportActions, EXPORT_REPORT_CONTENT_ID } from "@/components/repo
 import { CERTIFICATION_STATUS_LABELS } from "@/lib/types";
 import type { ExportCertification, ExportTraining } from "@/lib/db/repositories/export";
 import type { CalendarItem } from "@/components/calendar/types";
+import { appToday } from "@/lib/calendar/anchor";
 
 function hebrewDate(iso: string) {
   return format(new Date(iso), "EEEE, d/M/yyyy", { locale: he });
@@ -168,7 +169,14 @@ export function ExportReportBody({
         {selectedGanttItems.length > 0 && (
           <div data-pdf-atomic className="space-y-2 break-inside-avoid">
             <h2 className="font-bold">תצוגת גאנט</h2>
-            <GanttView items={selectedGanttItems} rangeStart={new Date(from)} rangeEnd={new Date(to)} />
+            {/* An explicit range, so the gantt does not auto-scroll anywhere; `today` only
+                tints the current week when it happens to fall inside the exported range. */}
+            <GanttView
+              items={selectedGanttItems}
+              today={appToday()}
+              rangeStart={new Date(from)}
+              rangeEnd={new Date(to)}
+            />
           </div>
         )}
 

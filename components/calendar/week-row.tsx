@@ -149,6 +149,8 @@ export interface WeekRowProps {
   onBarClick?: (item: CalendarItem) => void;
   emptyWeekMessage?: string;
   alignDayNumber?: "start" | "end";
+  /** The week containing today — tinted so the landing viewport reads at a glance. */
+  isCurrentWeek?: boolean;
 }
 
 function weekend(day: Date): boolean {
@@ -168,6 +170,7 @@ export function WeekRow({
   onBarClick,
   emptyWeekMessage,
   alignDayNumber = "start",
+  isCurrentWeek = false,
 }: WeekRowProps) {
   const weekStart = week[0];
   const weekEnd = week[6];
@@ -211,8 +214,22 @@ export function WeekRow({
   }
 
   return (
-    <div className="grid grid-cols-8 gap-1">
-      <div className="flex items-center justify-center rounded-md bg-primary/10 text-primary text-xs font-bold">
+    // A ring rather than a background: the day cells carry their own backgrounds
+    // (weekend, out-of-month, today), and tinting the row would fight all three.
+    <div
+      className={cn(
+        "grid grid-cols-8 gap-1 rounded-md",
+        isCurrentWeek && "ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-md text-xs font-bold",
+          isCurrentWeek
+            ? "bg-primary text-primary-foreground"
+            : "bg-primary/10 text-primary"
+        )}
+      >
         {getWeekNumber(weekStart)}
       </div>
       <div className="relative" style={{ gridColumn: "span 7" }}>
