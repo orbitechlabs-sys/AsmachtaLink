@@ -34,6 +34,7 @@ interface Draft {
   notes: string;
   is_reserve: boolean;
   has_prior_certification: boolean;
+  requires_lodging: boolean;
   fromFs: boolean;
   heldCerts: string[];
 }
@@ -49,6 +50,7 @@ function emptyDraft(isReserve: boolean): Draft {
     notes: "",
     is_reserve: isReserve,
     has_prior_certification: false,
+    requires_lodging: false,
     fromFs: false,
     heldCerts: [],
   };
@@ -122,6 +124,7 @@ export function BattalionRosterPanel({
         notes: draft.notes,
         is_reserve: draft.is_reserve,
         has_prior_certification: draft.has_prior_certification,
+        requires_lodging: draft.requires_lodging,
       }),
     });
     setSubmitting(false);
@@ -333,6 +336,17 @@ export function BattalionRosterPanel({
                 </span>
               )}
             </Label>
+          </div>
+
+          {/* The same plain bordered row as the flag above — NOT the amber container used
+              for עתודה below, which is highlighted because it changes the seat quota. */}
+          <div className="flex items-center gap-2 rounded-md border p-2.5 bg-white">
+            <Checkbox
+              id={`lodging-${certificationId}`}
+              checked={draft.requires_lodging}
+              onCheckedChange={(v) => patch({ requires_lodging: Boolean(v) })}
+            />
+            <Label htmlFor={`lodging-${certificationId}`}>נדרש לינה</Label>
           </div>
 
           {!draft.fromFs && (draft.full_name.trim() || draft.personal_number.trim()) && (

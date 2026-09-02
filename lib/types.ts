@@ -306,6 +306,8 @@ export interface RosterEntry {
   commander_phone: string | null;
   has_prior_certification: number;
   prior_certification_details: string | null;
+  /** "נדרש לינה" — informational only. SMALLINT 0/1, like every other flag on this row. */
+  requires_lodging: number;
   meets_prerequisite: number | null;
   notes: string | null;
   status: RosterStatus;

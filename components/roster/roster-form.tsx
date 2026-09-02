@@ -54,6 +54,7 @@ export function RosterForm({
       commander_phone: entry?.commander_phone ?? "",
       has_prior_certification: Boolean(entry?.has_prior_certification),
       prior_certification_details: entry?.prior_certification_details ?? "",
+      requires_lodging: Boolean(entry?.requires_lodging),
       meets_prerequisite: entry?.meets_prerequisite ? true : hasPrerequisite ? false : null,
       notes: entry?.notes ?? "",
       is_reserve: entry ? Boolean(entry.is_reserve) : Boolean(defaultIsReserve),
@@ -139,6 +140,18 @@ export function RosterForm({
           <Textarea {...register("prior_certification_details")} />
         </div>
       )}
+
+      {/* Plain checkbox, matching the flag above it — deliberately NOT the amber
+          highlighted container used for רישום כעתודה, which is styled that way because
+          עתודה changes the seat quota. This one is purely informational. */}
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={Boolean(watch("requires_lodging"))}
+          onCheckedChange={(v) => setValue("requires_lodging", Boolean(v))}
+          id="requires_lodging"
+        />
+        <Label htmlFor="requires_lodging">נדרש לינה</Label>
+      </div>
 
       {hasPrerequisite && (
         <div className="flex items-center gap-2">

@@ -30,6 +30,7 @@ interface SoldierDraft {
   commander_name: string;
   commander_phone: string;
   has_prior_certification: boolean;
+  requires_lodging: boolean;
   is_reserve: boolean;
   notes: string;
 }
@@ -45,6 +46,7 @@ function emptySoldier(key: number, battalionId: number): SoldierDraft {
     commander_name: "",
     commander_phone: "",
     has_prior_certification: false,
+    requires_lodging: false,
     is_reserve: false,
     notes: "",
   };
@@ -142,6 +144,7 @@ export function RequestForm({
           commander_name: s.commander_name,
           commander_phone: s.commander_phone,
           has_prior_certification: s.has_prior_certification,
+          requires_lodging: s.requires_lodging,
           is_reserve: s.is_reserve,
           notes: s.notes,
         })),
@@ -315,6 +318,19 @@ export function RequestForm({
               <Label htmlFor={`has_prior_certification-${soldier.key}`}>
                 קיימת הסמכה קודמת בתחום
               </Label>
+            </div>
+
+            {/* Plain row, matching the flag above — not the amber עתודה container below,
+                which is highlighted because it affects the allocation quota. */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={soldier.requires_lodging}
+                onCheckedChange={(v) =>
+                  updateSoldier(soldier.key, { requires_lodging: Boolean(v) })
+                }
+                id={`requires_lodging-${soldier.key}`}
+              />
+              <Label htmlFor={`requires_lodging-${soldier.key}`}>נדרש לינה</Label>
             </div>
 
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5">

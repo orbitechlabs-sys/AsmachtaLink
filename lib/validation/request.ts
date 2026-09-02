@@ -12,6 +12,7 @@ export const requestSoldierSchema = z.object({
   commander_name: z.string().nullish(),
   commander_phone: z.string().nullish(),
   has_prior_certification: z.boolean().default(false),
+  requires_lodging: z.boolean().default(false),
   is_reserve: z.boolean().default(false),
   notes: z.string().nullish(),
 });

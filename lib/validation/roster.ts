@@ -11,6 +11,7 @@ export const rosterEntrySchema = z.object({
   commander_phone: z.string().nullish(),
   has_prior_certification: z.boolean().default(false),
   prior_certification_details: z.string().nullish(),
+  requires_lodging: z.boolean().default(false),
   meets_prerequisite: z.boolean().nullish(),
   notes: z.string().nullish(),
   is_reserve: z.boolean().default(false),

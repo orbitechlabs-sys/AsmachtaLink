@@ -66,6 +66,7 @@ export interface RequestSoldierInput {
   commander_name?: string | null;
   commander_phone?: string | null;
   has_prior_certification?: boolean;
+  requires_lodging?: boolean;
   is_reserve?: boolean;
   notes?: string | null;
 }
@@ -86,8 +87,8 @@ export async function addRequestRosterEntries(
       `INSERT INTO roster_entries
           (certification_id, battalion_request_id, battalion_id, full_name, personal_number,
            company_platoon, phone, commander_name, commander_phone,
-           has_prior_certification, is_reserve, notes)
-         VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           has_prior_certification, requires_lodging, is_reserve, notes)
+         VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         battalionRequestId,
@@ -99,6 +100,7 @@ export async function addRequestRosterEntries(
         soldier.commander_name ?? null,
         soldier.commander_phone ?? null,
         soldier.has_prior_certification ? 1 : 0,
+        soldier.requires_lodging ? 1 : 0,
         soldier.is_reserve ? 1 : 0,
         soldier.notes ?? null,
       ],
@@ -124,6 +126,7 @@ export interface RosterEntryInput {
   commander_phone?: string | null;
   has_prior_certification?: boolean;
   prior_certification_details?: string | null;
+  requires_lodging?: boolean;
   meets_prerequisite?: boolean | null;
   notes?: string | null;
   is_reserve?: boolean;
@@ -188,8 +191,8 @@ async function insertRosterEntry(
     `INSERT INTO roster_entries
           (certification_id, battalion_id, full_name, personal_number, company_platoon, phone,
            commander_name, commander_phone, has_prior_certification, prior_certification_details,
-           meets_prerequisite, notes, is_reserve)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           requires_lodging, meets_prerequisite, notes, is_reserve)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id`,
     [
       input.certification_id,
@@ -202,6 +205,7 @@ async function insertRosterEntry(
       input.commander_phone ?? null,
       input.has_prior_certification ? 1 : 0,
       input.prior_certification_details ?? null,
+      input.requires_lodging ? 1 : 0,
       input.meets_prerequisite === undefined || input.meets_prerequisite === null
         ? null
         : input.meets_prerequisite
@@ -348,9 +352,10 @@ export async function updateRosterEntry(id: number, input: Partial<RosterEntryIn
     `UPDATE roster_entries SET
       battalion_id = $1, full_name = $2, personal_number = $3, company_platoon = $4, phone = $5,
       commander_name = $6, commander_phone = $7, has_prior_certification = $8,
-      prior_certification_details = $9, meets_prerequisite = $10, notes = $11, is_reserve = $12,
+      prior_certification_details = $9, requires_lodging = $10, meets_prerequisite = $11,
+      notes = $12, is_reserve = $13,
       updated_at = NOW()
-     WHERE id = $13`,
+     WHERE id = $14`,
   [
     input.battalion_id ?? existing.battalion_id,
     input.full_name ?? existing.full_name,
@@ -365,6 +370,14 @@ export async function updateRosterEntry(id: number, input: Partial<RosterEntryIn
         : 0
       : existing.has_prior_certification,
     input.prior_certification_details ?? existing.prior_certification_details,
+    // `!== undefined`, NOT `??`: `??` would treat an explicit `false` as absent and keep
+    // the stored 1, so unticking the box would never save. Same guard as the sibling flag
+    // three lines up.
+    input.requires_lodging !== undefined
+      ? input.requires_lodging
+        ? 1
+        : 0
+      : existing.requires_lodging,
     input.meets_prerequisite !== undefined
       ? input.meets_prerequisite === null
         ? null
