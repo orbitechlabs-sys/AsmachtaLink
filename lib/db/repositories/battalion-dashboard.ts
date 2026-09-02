@@ -5,26 +5,25 @@ import {
   openAllocationsOf,
   remainingAllocatedSlots,
 } from "@/lib/battalions/open-allocations";
-import { computeSlotsRemaining } from "@/lib/utils/slots";
-import { isRegistrationLocked } from "@/lib/utils/registration-lock";
+import { appTodayIso } from "@/lib/calendar/anchor";
+import {
+  REGISTRATION_OPEN_STATUSES,
+  type AllocationOpportunity,
+} from "@/lib/battalions/allocation-opportunities";
 import type { CertificationStatus } from "@/lib/types";
 import type {
   AdminConfirmationRow,
   AllocationSoldier,
-  BattalionActionItems,
   BattalionAllocation,
   BattalionTask,
-  OpenToAllCertification,
   QuarterKpi,
 } from "@/lib/battalions/types";
 
 export type {
   AdminConfirmationRow,
   AllocationSoldier,
-  BattalionActionItems,
   BattalionAllocation,
   BattalionTask,
-  OpenToAllCertification,
   QuarterKpi,
 } from "@/lib/battalions/types";
 export { openAllocationsOf } from "@/lib/battalions/open-allocations";
@@ -153,103 +152,104 @@ export async function listBattalionAllocations(
 }
 
 /**
- * The status that means "פתוחה להרשמה". Group B is specifically the registration WINDOW
- * being open, so it is this one status and not {@link OPEN_ALLOCATION_STATUSES}: `full`
- * has no seats left to offer and `in_progress` has already started.
+ * The opportunity statement, exported so the integration suite can run the EXACT SQL
+ * this function runs against seeded fixtures inside a rolled-back transaction. A test
+ * that retyped the query would only prove the copy correct.
+ *
+ * $1 battalion id · $2 statuses that permit registration · $3 today (Asia/Jerusalem).
  */
-const REGISTRATION_OPEN_STATUS = "open";
-
-/**
- * Everything the dashboard band asks a battalion to act on, in BOTH of its forms.
- *
- * GROUP A — seats allocated to this battalion, still unnamed. Derived from the
- * `allocations` the caller already fetched, through the very same `openAllocationsOf()`
- * the KPI card and the `slot` open-task read. That is the point of taking the array as an
- * argument rather than re-querying: three surfaces that must never disagree about whether
- * a certification still owes names now cannot, and the band costs no extra round trip.
- * `listBattalionTasks` above takes its allocations the same way.
- *
- * GROUP B — certifications open to EVERY battalion that this one has not touched. One
- * query, listed below. It cannot overlap Group A: Group A requires a quota row and Group B
- * requires that no quota row exists for the certification at all, so the band is
- * deduplicated structurally rather than by a post-pass. The explicit id check at the end is
- * a belt-and-braces guard, not the mechanism.
- *
- * NO N+1: one statement for Group B, none for Group A. The certification-wide registration
- * count comes from a single pre-grouped subquery, not a correlated count per row.
- *
- * THE LOCK IS APPLIED IN TYPESCRIPT, ON PURPOSE. `isRegistrationLocked()` resolves the
- * stored date+hour against Asia/Jerusalem's offset ON THAT DATE, which is DST-correct and
- * is the single definition every write path already enforces. Re-expressing it as SQL would
- * be a second, silently diverging lock concept — exactly what must not exist. The row count
- * here is small (open certifications with no quotas), so filtering in memory costs nothing.
- */
-export async function listBattalionActionItems(
-  battalionId: number,
-  allocations: BattalionAllocation[],
-  now: Date = new Date()
-): Promise<BattalionActionItems> {
-  const awaitingNames = openAllocationsOf(allocations);
-
-  const rows = await query<{
-    certification_id: number;
-    name: string;
-    location: string | null;
-    start_date: string;
-    end_date: string | null;
-    status: CertificationStatus;
-    color_hex: string | null;
-    total_slots: number | null;
-    registration_lock_date: string | null;
-    registration_lock_hour: number | null;
-    registered_total: number;
-  }>(
-    `SELECT c.id AS certification_id, c.name, c.location, c.start_date, c.end_date, c.status,
-            c.color_hex, c.total_slots, c.registration_lock_date, c.registration_lock_hour,
-            COALESCE(reg.registered_total, 0) AS registered_total
+export const ALLOCATION_OPPORTUNITIES_SQL = `SELECT c.id AS certification_id, c.name, c.location, c.start_date, c.end_date,
+            c.status, c.color_hex,
+            c.registration_lock_date, c.registration_lock_hour,
+            CASE WHEN q_any.certification_id IS NULL THEN 'open_to_all'
+                 ELSE 'battalion_quota' END AS mode,
+            CASE WHEN q_any.certification_id IS NULL THEN c.total_slots
+                 ELSE q_mine.allocated_slots END AS seats,
+            CASE WHEN q_any.certification_id IS NULL
+                 THEN COALESCE(occupied.everyone, 0)
+                 ELSE COALESCE(occupied.mine, 0) END AS taken,
+            CASE
+              WHEN (CASE WHEN q_any.certification_id IS NULL THEN c.total_slots
+                         ELSE q_mine.allocated_slots END) IS NULL THEN NULL
+              ELSE GREATEST(
+                (CASE WHEN q_any.certification_id IS NULL THEN c.total_slots
+                      ELSE q_mine.allocated_slots END)
+                - (CASE WHEN q_any.certification_id IS NULL
+                        THEN COALESCE(occupied.everyone, 0)
+                        ELSE COALESCE(occupied.mine, 0) END),
+                0)
+            END::int AS remaining
        FROM certifications c
+       -- Does ANY battalion hold an allocation here? That, and not this battalion's own
+       -- row, is what separates a shared pool from a targeted allocation.
        LEFT JOIN (
-         -- Certification-wide, NOT per battalion: an open-to-all cycle's capacity is shared,
-         -- so the seats left over are what every unit is competing for.
+         SELECT DISTINCT certification_id FROM certification_battalion_quotas
+       ) q_any ON q_any.certification_id = c.id
+       LEFT JOIN certification_battalion_quotas q_mine
+         ON q_mine.certification_id = c.id AND q_mine.battalion_id = $1
+       LEFT JOIN (
+         -- One pass, two counts. עתודה is excluded from BOTH: a reserve soldier occupies
+         -- no seat, so a cycle whose only names are reserve still has every seat open.
          SELECT re.certification_id,
-                COUNT(*) FILTER (
-                  WHERE re.is_reserve = 0 AND re.status = ANY($2::text[])
-                )::int AS registered_total
+                COUNT(*) FILTER (WHERE re.is_reserve = 0)::int AS everyone,
+                COUNT(*) FILTER (WHERE re.is_reserve = 0 AND re.battalion_id = $1)::int AS mine
            FROM roster_entries re
           WHERE re.certification_id IS NOT NULL
           GROUP BY re.certification_id
-       ) reg ON reg.certification_id = c.id
-      WHERE c.status = $3::text
-        -- "Open to all battalions" is the ABSENCE of any allocation: the moment the brigade
-        -- gives even one unit a quota the cycle stops being everybody's.
-        AND NOT EXISTS (
-          SELECT 1 FROM certification_battalion_quotas q WHERE q.certification_id = c.id
+       ) occupied ON occupied.certification_id = c.id
+      WHERE c.status = ANY($2::text[])
+        -- Expired cycles are not opportunities. A NULL/empty end_date is a one-day cycle,
+        -- so it falls back to start_date; ending TODAY still counts as open.
+        AND COALESCE(NULLIF(c.end_date, ''), c.start_date) >= $3::text
+        -- A targeted allocation belongs to this battalion only. Without this, every
+        -- battalion would see every other battalion's allocations.
+        AND (q_any.certification_id IS NULL OR q_mine.certification_id IS NOT NULL)
+        -- Seats must actually remain. NULL is unlimited and must survive the filter.
+        AND (
+          CASE WHEN q_any.certification_id IS NULL THEN c.total_slots
+               ELSE q_mine.allocated_slots END IS NULL
+          OR (CASE WHEN q_any.certification_id IS NULL THEN c.total_slots
+                   ELSE q_mine.allocated_slots END)
+             > (CASE WHEN q_any.certification_id IS NULL
+                     THEN COALESCE(occupied.everyone, 0)
+                     ELSE COALESCE(occupied.mine, 0) END)
         )
-        -- Any row at all, reserve and inactive included: this battalion has already engaged
-        -- with the certification, so the band has nothing left to prompt it about.
-        AND NOT EXISTS (
-          SELECT 1 FROM roster_entries re
-           WHERE re.certification_id = c.id AND re.battalion_id = $1
-        )
-        -- NULL capacity is UNLIMITED and must survive this filter; it is never 0 and never a
-        -- sentinel. A finite capacity has to have a seat actually left.
-        AND (c.total_slots IS NULL OR c.total_slots > COALESCE(reg.registered_total, 0))
-      ORDER BY c.start_date ASC, c.id ASC`,
-    [battalionId, COUNTED_STATUSES, REGISTRATION_OPEN_STATUS]
+      ORDER BY c.start_date ASC, c.id ASC`;
+
+/**
+ * Every certification this battalion can still put names on TODAY, in both allocation
+ * modes, from ONE query.
+ *
+ * This is the single source the dashboard band, the calendar highlight, the band's counter
+ * line and the weekly PDF all read. Previously the band and the calendar each decided
+ * eligibility for themselves with different predicates, which is why a half-filled
+ * allocation could be listed as open and left unpainted on the same screen.
+ *
+ * MODE IS DERIVED FROM THE ABSENCE OF QUOTA ROWS. `q_any` asks whether the certification
+ * has ANY allocation at all; `q_mine` asks whether this battalion has one. No rows anywhere
+ * means the seat pool is shared — "open to all" — which the previous Group B query got
+ * right but the Group A path never considered, because it resolved battalion quotas only
+ * and therefore could not see an open-to-all cycle.
+ *
+ * EXPIRY IS ASIA/JERUSALEM, NOT UTC. `$3` is today's civil date resolved through
+ * `appTodayIso()`, the same helper the calendar anchors on, so a cycle ending today stays
+ * listed until Israeli midnight rather than dropping off at 03:00 local when a UTC host
+ * ticks over. The comparison is on TEXT 'yyyy-MM-dd', which sorts lexicographically, so it
+ * needs no parsing and no timezone conversion of its own.
+ *
+ * NO N+1: the roster occupancy for every candidate certification comes from one
+ * pre-grouped subquery, not a count per row.
+ */
+export async function listAllocationOpportunities(
+  battalionId: number,
+  today: string = appTodayIso()
+): Promise<AllocationOpportunity[]> {
+  const rows = await query<Omit<AllocationOpportunity, "daysToClose">>(
+    ALLOCATION_OPPORTUNITIES_SQL,
+    [battalionId, REGISTRATION_OPEN_STATUSES, today]
   );
 
-  const allocatedIds = new Set(awaitingNames.map((a) => a.certification_id));
-  const openToAll: OpenToAllCertification[] = rows
-    .filter((r) => !isRegistrationLocked(r, now) && !allocatedIds.has(r.certification_id))
-    .map((r) => ({
-      ...r,
-      // NULL propagates as "unlimited" rather than collapsing to a number the band would
-      // then add into a free-seat total that does not exist.
-      remaining: computeSlotsRemaining(r.total_slots, r.registered_total),
-      daysToClose: daysUntil(r.registration_lock_date, now),
-    }));
-
-  return { awaitingNames, openToAll };
+  return rows.map((r) => ({ ...r, daysToClose: daysUntil(r.registration_lock_date) }));
 }
 
 /** `status='passed'` whose certification ended in the current quarter. */

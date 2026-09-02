@@ -1,5 +1,5 @@
-import type { CertificationStatus, RosterStatus } from "@/lib/types";
-import type { AllocationFill, OpenAllocation } from "@/lib/battalions/open-allocations";
+import type { RosterStatus } from "@/lib/types";
+import type { AllocationFill } from "@/lib/battalions/open-allocations";
 
 /** Slots allocated to this battalion, or null when it has no allocation at all. */
 export interface BattalionQuotaUsage {
@@ -52,46 +52,6 @@ export interface BattalionAllocation extends AllocationFill {
    * so this is not the same as `registered > 0`. */
   has_roster: boolean;
   soldiers: AllocationSoldier[];
-}
-
-/**
- * A certification the brigade opened to EVERY battalion — no `certification_battalion_quotas`
- * rows at all — that this battalion has not put a single soldier on yet.
- *
- * Deliberately not a `BattalionAllocation`: there is no quota to fill, so `allocated_slots`
- * and the per-battalion `remaining` that shape those cards have no meaning here. The
- * capacity below is the CERTIFICATION's, shared with every other battalion.
- */
-export interface OpenToAllCertification {
-  certification_id: number;
-  name: string;
-  location: string | null;
-  start_date: string;
-  end_date: string | null;
-  status: CertificationStatus;
-  color_hex: string | null;
-  /** The certification's own capacity. NULL means UNLIMITED — never 0, never a sentinel. */
-  total_slots: number | null;
-  /** Non-reserve soldiers in an active status across ALL battalions, since the capacity
-   * they consume is the certification's rather than any one unit's. */
-  registered_total: number;
-  /** total_slots − registered_total, floored at 0. NULL when capacity is unlimited, so a
-   * caller must branch on it rather than add it to a running total. */
-  remaining: number | null;
-  registration_lock_date: string | null;
-  registration_lock_hour: number | null;
-  daysToClose: number | null;
-}
-
-/**
- * The two things a battalion dashboard band asks its unit to act on. Returned together so
- * the band cannot show one group from a fresh read and the other from a stale one.
- */
-export interface BattalionActionItems {
-  /** Group A — seats the brigade allocated to THIS battalion that still need names. */
-  awaitingNames: OpenAllocation<BattalionAllocation>[];
-  /** Group B — open to everyone, and this battalion has registered nobody. */
-  openToAll: OpenToAllCertification[];
 }
 
 export interface QuarterKpi {

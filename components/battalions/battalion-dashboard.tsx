@@ -18,6 +18,7 @@ import { BattalionRosterPanel } from "@/components/battalions/battalion-roster-p
 import {
   assignLanes,
   AWAITING_NAMES,
+  NEW_ALLOCATION_BADGE,
   OPEN_TO_ALL,
   WeekRow,
   WeekdayHeader,
@@ -34,11 +35,16 @@ import type {
   BattalionDashboardKpis,
   BattalionQuotaUsage,
   BattalionTask,
-  OpenToAllCertification,
   QuarterKpi,
 } from "@/lib/battalions/types";
-import { isAwaitingNames, openAllocationsOf, urgencyBand } from "@/lib/battalions/open-allocations";
-import { summarizeActionBand, UNLIMITED_SEATS } from "@/lib/battalions/action-band";
+import {
+  hasUnlimitedSeats,
+  openSeatsOf,
+  splitByMode,
+  type AllocationOpportunity,
+} from "@/lib/battalions/allocation-opportunities";
+import { openAllocationsOf, urgencyBand } from "@/lib/battalions/open-allocations";
+import { UNLIMITED_SEATS } from "@/lib/battalions/action-band";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { cn } from "@/lib/utils";
 import { downloadBlob } from "@/lib/utils/download-file";
@@ -93,7 +99,7 @@ export function BattalionDashboard({
   battalion,
   summary,
   allocations,
-  openToAll,
+  opportunities,
   tasks,
   adminRows,
   quarter,
@@ -105,9 +111,13 @@ export function BattalionDashboard({
   battalion: Battalion;
   summary: BattalionDashboardKpis;
   allocations: BattalionAllocation[];
-  /** Group B of the action band: open to every battalion, none of this one's soldiers on
-   * it. Derived server-side — the client never decides what it is allowed to see. */
-  openToAll: OpenToAllCertification[];
+  /**
+   * Every open allocation opportunity for this battalion, both modes, already filtered
+   * server-side for status, remaining seats and expiry. The band, its counter and the
+   * calendar highlight all read THIS array — the client never re-decides eligibility,
+   * which is what let the band and the calendar drift apart before.
+   */
+  opportunities: AllocationOpportunity[];
   tasks: BattalionTask[];
   adminRows: AdminConfirmationRow[];
   quarter: QuarterKpi;
@@ -147,28 +157,34 @@ export function BattalionDashboard({
   const weekBars = calendarItems;
   const laneOf = useMemo(() => assignLanes(weekBars), [weekBars]);
 
-  const openToAllIds = useMemo(
-    () => new Set(openToAll.map((c) => c.certification_id)),
-    [openToAll]
+  // THE CALENDAR READS THE SAME SET AS THE BAND. It used to ask `isAwaitingNames(a)` —
+  // "has a quota and nobody named yet" — which is a different question from the band's
+  // "seats remain": a quota of 3 with 1 name was listed as open and left unpainted, and
+  // neither predicate looked at the date, so an ended cycle stayed highlighted forever.
+  const modeByCertId = useMemo(
+    () => new Map(opportunities.map((c) => [c.certification_id, c.mode])),
+    [opportunities]
   );
 
   const metaByKey: Record<string, WeekBarMeta> = {};
   for (const item of weekBars) {
     if (item.kind !== "certification") continue;
+    const mode = modeByCertId.get(item.id);
     const a = byId.get(item.id);
     if (a) {
       metaByKey[item.key] = {
         fill: fillDot(a),
         battalionColor: battalion.color_hex,
-        awaitingNames: isAwaitingNames(a),
+        awaitingNames: mode === "battalion_quota",
+        openToAll: mode === "open_to_all",
       };
       continue;
     }
-    // Group B has no allocation and no roster row, so there is no fill to report — a
-    // `fillDot` here would be "none", the red "אין שמות" dot, which says the battalion is
-    // late on seats it was never given. The amber bar carries the whole message.
-    if (openToAllIds.has(item.id)) {
-      metaByKey[item.key] = { openToAll: true };
+    // An open-to-all cycle has no allocation and no roster row here, so there is no fill to
+    // report — a `fillDot` would be the red "אין שמות" dot, saying the battalion is late on
+    // seats it was never given. The coloured bar carries the whole message.
+    if (mode) {
+      metaByKey[item.key] = { openToAll: mode === "open_to_all", awaitingNames: mode === "battalion_quota" };
     }
   }
 
@@ -188,7 +204,10 @@ export function BattalionDashboard({
           color: a.color_hex || "#6b7280",
           filled: a.registered,
           allocated: a.allocated_slots,
-          awaitingNames: isAwaitingNames(a),
+          // Same source as the bar above it, so one certification cannot read two ways in
+          // one week.
+          awaitingNames: modeByCertId.get(a.certification_id) === 'battalion_quota',
+          openToAll: modeByCertId.get(a.certification_id) === 'open_to_all',
           slots: Array.from({ length: slotCount }, (_, i) => ({
             name: names[i] ?? null,
           })),
@@ -238,11 +257,21 @@ export function BattalionDashboard({
   const selected = openId != null ? byId.get(openId) : undefined;
 
   // Covers BOTH groups; unlimited capacity is rendered as a word rather than a number.
-  const {
-    certCount: bandCertCount,
-    empty: bandEmpty,
-    slotsLabel: bandSlotsLabel,
-  } = summarizeActionBand(open, openToAll);
+  // Both groups, split from the ONE server-filtered set. `open` above still feeds the KPI
+  // delta and the open-tasks list, which are out of this change's scope.
+  const { battalionQuota, openToAll } = useMemo(
+    () => splitByMode(opportunities),
+    [opportunities]
+  );
+  const bandCertCount = opportunities.length;
+  const bandEmpty = bandCertCount === 0;
+  // Aggregated across BOTH groups, so the counter cannot disagree with the cards rendered.
+  const boundedSeats = openSeatsOf(opportunities);
+  const bandSlotsLabel = hasUnlimitedSeats(opportunities)
+    ? boundedSeats > 0
+      ? `${boundedSeats} + ${UNLIMITED_SEATS}`
+      : UNLIMITED_SEATS
+    : String(boundedSeats);
 
   return (
     <div className="space-y-5">
@@ -316,42 +345,66 @@ export function BattalionDashboard({
             </h2>
           </div>
 
-          {open.length > 0 && (
+          {battalionQuota.length > 0 && (
+            // The dominant group: seats the brigade set aside for THIS battalion and
+            // nobody else. The amber and the badge are what make it read first.
             <h3
-              className="text-[0.8rem] font-extrabold mb-2"
-              style={{ color: "var(--fs-ok-ink)" }}
+              className="text-[0.8rem] font-extrabold mb-2 flex items-center gap-2"
+              style={{ color: AWAITING_NAMES.ink }}
             >
+              <span
+                className="rounded-full px-2 py-0.5 text-[0.7rem] border"
+                style={{
+                  backgroundColor: AWAITING_NAMES.bg,
+                  borderColor: AWAITING_NAMES.line,
+                }}
+              >
+                {NEW_ALLOCATION_BADGE}
+              </span>
               {AWAITING_NAMES.label}
             </h3>
           )}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(218px,1fr))] gap-2.5">
-            {open.map((a) => {
-              const urg = urgencyBand(a.daysToClose);
+            {battalionQuota.map((c) => {
+              // The inline "fill names" panel needs the full allocation row; the card
+              // itself renders from the opportunity, which is what the calendar bar and
+              // the counter line also read.
+              const a = byId.get(c.certification_id);
+              const urg = urgencyBand(c.daysToClose);
               const hot = urg === "hot";
-              // The card carries the same amber the calendar bar and the "יוצאים להסמכה"
-              // row use for this state, so one certification cannot read two ways in two
-              // places. The urgency border stays on top of it.
+              const seats = c.seats ?? 0;
               return (
                 <button
-                  key={a.certification_id}
+                  key={c.certification_id}
                   type="button"
-                  onClick={() => openAlloc(a.certification_id)}
+                  onClick={() => openAlloc(c.certification_id)}
                   className={cn(
-                    "rounded-xl p-2.5 flex flex-col gap-2 text-start border-[1.5px] transition hover:-translate-y-0.5 hover:shadow-md",
-                    openId === a.certification_id && "border-2 shadow-lg",
-                    hot ? "border-[var(--fs-bad-line)]" : "border-[var(--fs-ok-line)]"
+                    "rounded-xl p-2.5 flex flex-col gap-2 text-start border-2 transition hover:-translate-y-0.5 hover:shadow-md",
+                    openId === c.certification_id && "shadow-lg"
                   )}
-                  style={{ backgroundColor: AWAITING_NAMES.bg }}
+                  // A solid amber border rather than the band's green: a targeted
+                  // allocation is the loudest thing on this screen and must not blend into
+                  // its container.
+                  style={{
+                    backgroundColor: AWAITING_NAMES.bg,
+                    borderColor: hot ? "var(--fs-bad-line)" : AWAITING_NAMES.line,
+                  }}
                 >
                   <span className="flex items-start justify-between gap-2">
-                    <span>
-                      <span className="block text-[0.86rem] font-extrabold leading-tight">{a.name}</span>
+                    <span className="min-w-0">
+                      <span
+                        className="inline-block rounded-full px-1.5 py-0.5 text-[0.6rem] font-extrabold mb-1"
+                        style={{ backgroundColor: AWAITING_NAMES.line, color: AWAITING_NAMES.ink }}
+                      >
+                        {NEW_ALLOCATION_BADGE}
+                      </span>
+                      <span className="block text-[0.86rem] font-extrabold leading-tight">{c.name}</span>
                       <span className="block text-[0.66rem] font-semibold text-muted-foreground mt-0.5">
-                        {fmt(a.start_date)}
-                        {a.location ? ` · ${a.location}` : ""}
+                        {fmt(c.start_date)}
+                        {c.location ? ` · ${c.location}` : ""}
                       </span>
                     </span>
-                    {a.daysToClose !== null && (
+                    {c.daysToClose !== null && (
                       <span
                         className={cn(
                           "text-[0.61rem] font-extrabold px-1.5 py-0.5 rounded-full shrink-0",
@@ -360,17 +413,17 @@ export function BattalionDashboard({
                           urg === "cool" && "bg-[var(--fs-ok-pill)] text-[var(--fs-ok-ink)]"
                         )}
                       >
-                        {a.daysToClose} ימים
+                        {c.daysToClose} ימים
                       </span>
                     )}
                   </span>
                   <span className="flex gap-0.5 flex-wrap">
-                    {Array.from({ length: a.allocated_slots }, (_, i) => (
+                    {Array.from({ length: seats }, (_, i) => (
                       <b
                         key={i}
                         className={cn(
                           "w-[13px] h-[13px] rounded-[3px] block",
-                          i < a.registered
+                          i < c.taken
                             ? "bg-[#0f9d6e]"
                             : hot
                               ? "bg-white border-[1.5px] border-[var(--fs-bad-line)]"
@@ -382,12 +435,12 @@ export function BattalionDashboard({
                   <span className="flex items-center justify-between gap-2">
                     <span
                       className="text-[0.73rem] font-extrabold tabular-nums"
-                      style={{ color: hot ? "var(--fs-bad-ink)" : "var(--fs-ok-ink)" }}
+                      style={{ color: hot ? "var(--fs-bad-ink)" : AWAITING_NAMES.ink }}
                     >
-                      {a.registered}/{a.allocated_slots} מולאו · חסרים {a.remaining}
+                      {c.taken}/{seats} מולאו · חסרים {c.remaining}
                     </span>
                     <span className="text-[0.66rem] font-extrabold" style={{ color: "#0f7a5c" }}>
-                      {openId === a.certification_id ? "סגור ▲" : "מלא שמות ▾"}
+                      {openId === c.certification_id && a ? "סגור ▲" : "מלא שמות ▾"}
                     </span>
                   </span>
                 </button>
@@ -398,10 +451,16 @@ export function BattalionDashboard({
           {openToAll.length > 0 && (
             <>
               <h3
-                className="text-[0.8rem] font-extrabold mt-3 mb-2"
-                style={{ color: "var(--fs-ok-ink)" }}
+                className="text-[0.8rem] font-extrabold mt-3 mb-2 flex items-center gap-2"
+                style={{ color: OPEN_TO_ALL.ink }}
               >
-                {OPEN_TO_ALL.label}
+                <span
+                  className="rounded-full px-2 py-0.5 text-[0.7rem] border"
+                  style={{ backgroundColor: OPEN_TO_ALL.bg, borderColor: OPEN_TO_ALL.line }}
+                >
+                  {OPEN_TO_ALL.label}
+                </span>
+                מאגר מקומות משותף לכלל הגדודים
               </h3>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(218px,1fr))] gap-2.5">
                 {openToAll.map((c) => {
@@ -410,14 +469,20 @@ export function BattalionDashboard({
                     <Link
                       key={c.certification_id}
                       href={certificationHref(c.certification_id)}
-                      className={cn(
-                        "rounded-xl p-2.5 flex flex-col gap-2 text-start border-[1.5px] border-dashed transition hover:-translate-y-0.5 hover:shadow-md",
-                        urg === "hot" ? "border-[var(--fs-bad-line)]" : "border-[var(--fs-ok-line)]"
-                      )}
-                      style={{ backgroundColor: OPEN_TO_ALL.bg }}
+                      className="rounded-xl p-2.5 flex flex-col gap-2 text-start border-2 border-dashed transition hover:-translate-y-0.5 hover:shadow-md"
+                      style={{
+                        backgroundColor: OPEN_TO_ALL.bg,
+                        borderColor: urg === "hot" ? "var(--fs-bad-line)" : OPEN_TO_ALL.line,
+                      }}
                     >
                       <span className="flex items-start justify-between gap-2">
-                        <span>
+                        <span className="min-w-0">
+                          <span
+                            className="inline-block rounded-full px-1.5 py-0.5 text-[0.6rem] font-extrabold mb-1"
+                            style={{ backgroundColor: OPEN_TO_ALL.line, color: OPEN_TO_ALL.ink }}
+                          >
+                            {OPEN_TO_ALL.label}
+                          </span>
                           <span className="block text-[0.86rem] font-extrabold leading-tight">
                             {c.name}
                           </span>
@@ -448,7 +513,7 @@ export function BattalionDashboard({
                       <span className="flex items-center justify-between gap-2">
                         <span
                           className="text-[0.73rem] font-extrabold tabular-nums"
-                          style={{ color: "var(--fs-ok-ink)" }}
+                          style={{ color: OPEN_TO_ALL.ink }}
                         >
                           {/* Unlimited says so in words. A number here would be invented —
                               there is no capacity to subtract from. */}
@@ -538,18 +603,18 @@ export function BattalionDashboard({
             </span>
             <span className="rounded-full px-2 py-0.5 border bg-[oklch(0.76_0.16_70_/_0.16)]">חלקי</span>
             <span className="rounded-full px-2 py-0.5 border bg-[oklch(0.62_0.24_15_/_0.12)]">אין שמות</span>
-            {/* Same amber as the bars and the "יוצאים להסמכה" row. */}
+            {/* The two chips carry exactly the colours the bars are painted with, so the
+                legend and the grid cannot disagree about which offer is which. */}
             <span
-              className="rounded-full px-2 py-0.5 border border-dashed"
+              className="rounded-full px-2 py-0.5 border"
               style={{
                 backgroundColor: AWAITING_NAMES.bg,
                 borderColor: AWAITING_NAMES.line,
                 color: AWAITING_NAMES.ink,
               }}
             >
-              {AWAITING_NAMES.label}
+              {NEW_ALLOCATION_BADGE} — {AWAITING_NAMES.label}
             </span>
-            {/* Same amber, next to it: both mean "this one is waiting on you". */}
             <span
               className="rounded-full px-2 py-0.5 border border-dashed"
               style={{

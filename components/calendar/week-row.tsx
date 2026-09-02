@@ -83,6 +83,8 @@ export interface DayNameGroup {
   /** The brigade allocated slots but nobody has been named yet. Painted amber — see
    * AWAITING_NAMES below. */
   awaitingNames?: boolean;
+  /** Open to every battalion — painted sky, see OPEN_TO_ALL. */
+  openToAll?: boolean;
   onOpen?: () => void;
 }
 
@@ -113,24 +115,29 @@ export const AWAITING_NAMES = {
 } as const;
 
 /**
- * "Open to every battalion, and you have registered nobody" — the second thing a battalion
- * owes an answer on.
+ * "Open to every battalion" — a shared seat pool this unit may register into.
  *
- * It BORROWS AWAITING_NAMES' three colours rather than picking its own. Both states mean
- * the same thing to the unit reading the calendar — this cycle is waiting on you — so they
- * must look identical; what separates them is the label, which is why only the label is
- * redeclared here. Deriving the colours instead of copying the hex keeps them that way if
- * the amber is ever retuned.
+ * It gets its OWN colour family rather than borrowing the amber above. Both states mean
+ * "you can act on this", but they are not the same offer: an allocation was handed to this
+ * battalion by name and nobody else can take those seats, while an open pool is first
+ * come, first served. Painting them identically — which is what borrowing AWAITING_NAMES'
+ * hex did — made the band's two groups indistinguishable without reading the label.
+ *
+ * sky-100 / sky-800 / sky-400, from the same Tailwind palette as the amber.
  */
 export const OPEN_TO_ALL = {
-  bg: AWAITING_NAMES.bg,
-  ink: AWAITING_NAMES.ink,
-  line: AWAITING_NAMES.line,
-  /** The calendar legend chip. */
+  bg: "#e0f2fe",
+  ink: "#075985",
+  line: "#38bdf8",
+  /** The calendar legend chip and the band badge. */
   label: "פתוח לכלל הגדודים",
   /** The dashboard band card, where there is room to say what is owed. */
-  bandLabel: "פתוח לכלל הגדודים — טרם נרשמו שמות",
+  bandLabel: "פתוח לכלל הגדודים — ניתן לרשום שמות",
 } as const;
+
+/** The badge on a targeted allocation. Short and loud on purpose: this is the case the
+ * band is built to make impossible to miss. */
+export const NEW_ALLOCATION_BADGE = "הקצאה חדשה";
 
 export interface WeekRowProps {
   week: Date[];
@@ -280,6 +287,8 @@ export function WeekRow({
               // allocation with no names on it or a cycle open to everyone that this
               // battalion has not joined — both are what it is here to act on.
               const awaiting = Boolean(meta?.awaitingNames || meta?.openToAll);
+              // Two different offers, two different colours — see OPEN_TO_ALL.
+              const tone = meta?.openToAll ? OPEN_TO_ALL : AWAITING_NAMES;
               const oneDay = !isMultiDay(item) && item.kind !== "influencing_factor";
               const className = cn(
                 "pointer-events-auto px-1.5 truncate flex items-center gap-1 overflow-hidden shadow-sm",
@@ -298,8 +307,8 @@ export function WeekRow({
                 gridRow: 1,
                 marginTop: lane * laneHeight,
                 height: laneHeight - 3,
-                backgroundColor: awaiting ? AWAITING_NAMES.bg : item.color,
-                ...(awaiting ? { color: AWAITING_NAMES.ink, borderColor: AWAITING_NAMES.line } : {}),
+                backgroundColor: awaiting ? tone.bg : item.color,
+                ...(awaiting ? { color: tone.ink, borderColor: tone.line } : {}),
               } as const;
               const inner = (
                 <>
@@ -400,13 +409,14 @@ export function WeekRow({
                         "flex flex-col gap-0.5 text-start",
                         // Same amber state as the calendar bar above, so one certification
                         // never reads two different ways in the same week.
-                        g.awaitingNames && "rounded-sm border border-dashed p-1 -m-px"
+                        (g.awaitingNames || g.openToAll) &&
+                          "rounded-sm border border-dashed p-1 -m-px"
                       )}
                       style={
-                        g.awaitingNames
+                        g.awaitingNames || g.openToAll
                           ? {
-                              backgroundColor: AWAITING_NAMES.bg,
-                              borderColor: AWAITING_NAMES.line,
+                              backgroundColor: g.openToAll ? OPEN_TO_ALL.bg : AWAITING_NAMES.bg,
+                              borderColor: g.openToAll ? OPEN_TO_ALL.line : AWAITING_NAMES.line,
                             }
                           : undefined
                       }
@@ -414,7 +424,13 @@ export function WeekRow({
                     >
                       <div
                         className="text-[10px] font-extrabold leading-tight px-0.5 flex items-center justify-between gap-1"
-                        style={{ color: g.awaitingNames ? AWAITING_NAMES.ink : g.color }}
+                        style={{
+                          color: g.openToAll
+                            ? OPEN_TO_ALL.ink
+                            : g.awaitingNames
+                              ? AWAITING_NAMES.ink
+                              : g.color,
+                        }}
                       >
                         <span className="truncate">{g.name}</span>
                         {/* No allocation to count against means no "x/y" — showing "3/null"

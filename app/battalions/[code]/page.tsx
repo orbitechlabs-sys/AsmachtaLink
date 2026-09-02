@@ -3,7 +3,7 @@ import { getBattalionByCode } from "@/lib/db/repositories/battalions";
 import { listRequests } from "@/lib/db/repositories/requests";
 import { getBattalionSummary } from "@/lib/db/repositories/battalion-summary";
 import {
-  listBattalionActionItems,
+  listAllocationOpportunities,
   listBattalionAllocations,
   listBattalionTasks,
   listAdminConfirmations,
@@ -53,13 +53,15 @@ export default async function BattalionDetailPage({
       listInfluencingFactors(),
     ]);
 
-  // Both derive from `allocations`, so they run together rather than in series.
   // AUTHORIZATION: `scope` above already 404s a battalion-scoped user asking about another
   // battalion, and every query below is keyed to `battalion.id` from the URL — never to the
-  // `active_role` cookie, which is a display selector and is not read here.
-  const [tasks, actionItems] = await Promise.all([
+  // `active_role` cookie, which is a display selector and is not read here. A brigade user
+  // previewing 9308 therefore gets byte-identical data to a scoped 9308 user.
+  const [tasks, opportunities] = await Promise.all([
     listBattalionTasks(battalion.id, allocations, pendingIdentity),
-    listBattalionActionItems(battalion.id, allocations),
+    // THE single eligibility source: the band, its counter, the calendar highlight and the
+    // weekly PDF all read this one result set.
+    listAllocationOpportunities(battalion.id),
   ]);
 
   const certItems = allocations.map((a) =>
@@ -89,10 +91,14 @@ export default async function BattalionDetailPage({
     })
   );
 
-  // Group B is absent from `allocations` by construction — no quota row, no roster row — so
-  // without this the certification the band is pointing at would have no bar to point to.
-  // `battalions: []` is the truth: nobody is allocated, which is what makes it open to all.
-  const openToAllItems = actionItems.openToAll.map((c) =>
+  // An open-to-all cycle has no quota row and may have no roster row for this battalion, so
+  // `listBattalionAllocations` cannot see it — without this the certification the band
+  // points at would have no bar on the calendar to highlight. `battalions: []` is the
+  // truth: nobody is allocated, which is what makes the pool shared.
+  const allocationIds = new Set(allocations.map((a) => a.certification_id));
+  const openToAllItems = opportunities
+    .filter((c) => c.mode === "open_to_all" && !allocationIds.has(c.certification_id))
+    .map((c) =>
     certificationToCalendarItem({
       id: c.certification_id,
       template_id: null,
@@ -101,7 +107,7 @@ export default async function BattalionDetailPage({
       start_date: c.start_date,
       end_date: c.end_date,
       location: c.location,
-      total_slots: c.total_slots,
+      total_slots: c.seats,
       registration_open: 1,
       registration_lock_date: c.registration_lock_date,
       registration_lock_hour: c.registration_lock_hour,
@@ -113,7 +119,7 @@ export default async function BattalionDetailPage({
       color_hex: c.color_hex,
       created_at: "",
       updated_at: "",
-      registered_count: c.registered_total,
+      registered_count: c.taken,
       slots_remaining: c.remaining,
       battalions: [],
     })
@@ -144,7 +150,7 @@ export default async function BattalionDetailPage({
       battalion={battalion}
       summary={summary}
       allocations={allocations}
-      openToAll={actionItems.openToAll}
+      opportunities={opportunities}
       tasks={tasks}
       adminRows={adminRows}
       quarter={quarter}
