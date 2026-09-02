@@ -74,6 +74,61 @@ export function canEditAnything(user: AppUser | null): boolean {
   return canEdit(user) || (!!user && user.status === "approved" && user.role === "editor_battalion");
 }
 
+// --- Roster entries -----------------------------------------------------------------
+
+/**
+ * THE roster-write permission: may this user create, edit, delete or re-status a roster
+ * entry belonging to `battalionId`?
+ *
+ * CAPABILITY AND OWNERSHIP IN ONE CALL, deliberately. Every roster write needs both
+ * answers, and a design where the caller asks "can you edit?" and then separately
+ * remembers to ask "is it yours?" is one where a route eventually forgets the second
+ * question. There is no variant of this function that skips the battalion.
+ *
+ * - global editors / super-admins: any battalion, exactly as before
+ * - editor_battalion: their OWN battalion only
+ * - viewer_battalion, viewer, unapproved: never
+ *
+ * It delegates to `canEditBattalion` rather than restating the rule, so a battalion
+ * editor's roster reach can never drift from their reach over their own data generally,
+ * and a brigade editor's reach cannot be narrowed here by accident.
+ *
+ * IT TAKES THE AUTHENTICATED `AppUser`, NOT A `Role`. The `Role` axis comes from the
+ * `active_role` cookie, which is a view selector any client can set — see the status route
+ * for what trusting it used to cost.
+ */
+export function canManageRosterEntry(user: AppUser | null, battalionId: number): boolean {
+  return canEditBattalion(user, battalionId);
+}
+
+/**
+ * May this user manage roster entries for at least one battalion? For deciding whether to
+ * render an "add soldier" affordance at all, before a battalion has been picked.
+ *
+ * NOT AN AUTHORIZATION CHECK. The write itself must still go through
+ * `canManageRosterEntry()` with the target battalion.
+ */
+export function canManageAnyRoster(user: AppUser | null): boolean {
+  return canEditAnything(user);
+}
+
+/**
+ * The role string stamped on the audit trail (`status_history.changed_by_role`) for a write
+ * by `user`.
+ *
+ * SAME VOCABULARY AS BEFORE, DIFFERENT SOURCE. The column already holds "brigade" (707
+ * rows) and "battalion:CODE", and this keeps producing exactly those two shapes — emitting
+ * "editor"/"super_admin" instead would fragment a column the history is read from. What
+ * changes is where the value comes from: the authenticated row rather than
+ * `getCurrentRole()`, so the trail can no longer record whatever the `active_role` cookie
+ * claimed the writer to be.
+ */
+export function auditRoleOf(user: AppUser | null, battalionCode?: string | null): string {
+  if (!user) return "unknown";
+  if (isBattalionScoped(user)) return `battalion:${battalionCode ?? user.battalion_id ?? "?"}`;
+  return "brigade";
+}
+
 // --- Organizational scope (unchanged): brigade vs battalion:CODE ---
 
 export function isBrigade(role: Role): boolean {

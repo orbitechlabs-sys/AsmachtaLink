@@ -9,6 +9,7 @@ import { battalionRosterEntrySchema } from "@/lib/validation/roster";
 import { requireApprovedUser } from "@/lib/auth/user";
 import { denyOutOfScope, requireBattalionEditor } from "@/lib/auth/scope";
 import { REGISTRATION_LOCKED_MESSAGE } from "@/lib/utils/registration-lock";
+import { DRAFT_REFUSAL_MESSAGE } from "@/lib/battalions/allocation-opportunities";
 
 /**
  * One battalion's soldiers on one certification. This is the entry point a battalion-scoped
@@ -24,6 +25,8 @@ function refusalMessage(
   used?: number
 ): { error: string; status: number } {
   switch (reason) {
+    case "not_open":
+      return { error: DRAFT_REFUSAL_MESSAGE, status: 409 };
     case "no_quota":
       return {
         error: "לא הוקצו לגדוד מקומות בהסמכה זו — לא ניתן להוסיף חיילים.",
@@ -32,6 +35,11 @@ function refusalMessage(
     case "quota_exceeded":
       return {
         error: `ההקצאה לגדוד בהסמכה זו מלאה (${used} מתוך ${allocated}) — לא ניתן להוסיף חייל נוסף. ניתן להוסיף כעתודה.`,
+        status: 409,
+      };
+    case "capacity_full":
+      return {
+        error: `כל המקומות בהסמכה זו תפוסים (${used} מתוך ${allocated}) — לא ניתן להוסיף חייל נוסף. ניתן להוסיף כעתודה.`,
         status: 409,
       };
     case "registration_locked":

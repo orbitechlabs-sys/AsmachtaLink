@@ -3,7 +3,18 @@ import type { AllocationFill } from "@/lib/battalions/open-allocations";
 
 /** Slots allocated to this battalion, or null when it has no allocation at all. */
 export interface BattalionQuotaUsage {
+  /** Seats in the pool that applies to this battalion: its own allocation in Mode B, the
+   * certification's shared `total_slots` in Mode A. NULL means unlimited. */
   allocated: number | null;
+  /** Which pool `allocated` refers to — see getBattalionQuotaUsage. */
+  mode?: "open_to_all" | "battalion_quota";
+  /** Mode B only: quota rows exist but none belongs to this battalion, so it was not
+   * invited. Distinct from "Mode A with no cap", which both used to look like `allocated:
+   * null` and is the confusion this flag removes. */
+  missing_quota?: boolean;
+  /** The certification's status permits registration (see REGISTRATION_OPEN_STATUSES).
+   * False for a טיוטה, which a battalion must not staff. */
+  registration_open?: boolean;
   /** Non-reserve soldiers occupying the allocation. */
   used: number;
   /** Reserve soldiers — listed, never counted against the allocation. */

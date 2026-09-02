@@ -70,7 +70,17 @@ export function isBattalionScopedRole(role: string): boolean {
   return (BATTALION_SCOPED_ROLES as string[]).includes(role);
 }
 
-/** May a battalion-scoped user open this page path? */
+/**
+ * May a battalion-scoped user open this page path?
+ *
+ * THE WHOLE `/certifications` SUBTREE IS CLOSED, including the per-certification detail
+ * page. It was briefly opened so a battalion editor could reach the brigade roster screens,
+ * which had the side effect of showing them every OTHER battalion's soldiers on the same
+ * cycle — read-only, but visible, and not intended. The battalion route
+ * (`/battalions/{code}/certifications/{id}`) is self-contained: it carries its own inline
+ * add, edit, delete and reserve controls and links nowhere under `/certifications`, so
+ * closing this costs a scoped user nothing.
+ */
 export function isPathAllowedForScopedRole(pathname: string): boolean {
   if (pathname === "/") return true; // the root redirects onward
   if (ALWAYS_ALLOWED_PREFIXES.some((p) => matches(pathname, p))) return true;
@@ -112,6 +122,8 @@ const GAPS_WRITE = /^\/api\/gaps\/\d+\/(key|active-source|nominations)(\/\d+)?$/
 /** Administrative confirmation and required-document tracking for one roster entry.
  * Neither touches `roster_entries` itself. */
 const ROSTER_TRACKING_WRITE = /^\/api\/roster\/\d+\/(admin-confirmation|documents)$/;
+
+
 
 /** The two writes a battalion editor may perform: a request for their own battalion, and
  * managing their own battalion's soldiers on a certification within its allocation.

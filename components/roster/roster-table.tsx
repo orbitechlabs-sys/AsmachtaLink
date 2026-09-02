@@ -25,17 +25,29 @@ export function RosterTable({
   certificationName,
   entries,
   battalions,
-  canManage,
+  manageableBattalionIds,
 }: {
   certificationId: number;
   /** Title line of the copied block — see lib/roster/copy-format.ts. */
   certificationName: string;
   entries: RosterEntry[];
   battalions: Battalion[];
-  canManage: boolean;
+  /**
+   * Battalions whose rows this user may edit or delete. `null` means every battalion
+   * (brigade HQ); an array confines the controls to those ids (a battalion editor gets
+   * exactly their own).
+   *
+   * An ID LIST RATHER THAN A PREDICATE FUNCTION, because a server component cannot pass a
+   * function across the boundary. It is resolved from `canManageRosterEntry` on the server,
+   * and it only decides which controls RENDER — every route re-runs the same permission, so
+   * a hand-crafted request against another battalion's entry still fails.
+   */
+  manageableBattalionIds: number[] | null;
 }) {
   const router = useRouter();
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
+  const manageable = manageableBattalionIds === null ? null : new Set(manageableBattalionIds);
+  const canManageRow = (battalionId: number) => manageable === null || manageable.has(battalionId);
   // Which row most recently copied, so only that row shows the check.
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,16 +131,20 @@ export function RosterTable({
               <TableCell>
                 <RosterStatusBadge status={e.status} />
               </TableCell>
+              {/* Another battalion's soldier stays visible but carries no controls — the
+                  edit page and every write route refuse it independently. */}
               <TableCell className="flex gap-1 justify-end">
-                <Button variant="ghost" size="icon" asChild>
-                  <Link href={`/certifications/${certificationId}/roster/${e.id}/edit`}>
-                    <Pencil className="size-4" />
-                  </Link>
-                </Button>
-                {canManage && (
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)}>
-                    <Trash2 className="size-4" />
-                  </Button>
+                {canManageRow(e.battalion_id) && (
+                  <>
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/certifications/${certificationId}/roster/${e.id}/edit`}>
+                        <Pencil className="size-4" />
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </>
                 )}
               </TableCell>
             </TableRow>

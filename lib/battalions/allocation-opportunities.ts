@@ -24,6 +24,30 @@ import type { CertificationStatus } from "@/lib/types";
  */
 export const REGISTRATION_OPEN_STATUSES: CertificationStatus[] = ["open"];
 
+/**
+ * Why a battalion registration was refused. Shared by the repository, the API's Hebrew
+ * message map and the panel's banner, so the reason a soldier could not be added is named
+ * once and cannot drift between the three.
+ */
+export type RegistrationRefusal =
+  /** The certification's status does not permit registration — draft, closed, cancelled… */
+  | "not_open"
+  /** Mode B and this battalion has no allocation on it. */
+  | "no_quota"
+  /** Mode B and this battalion's allocation is full. */
+  | "quota_exceeded"
+  /** Mode A and the shared pool is full. */
+  | "capacity_full"
+  | "registration_locked";
+
+/**
+ * The Hebrew reason a battalion cannot register, worded once.
+ *
+ * The panel shows it in place of the add button and the API returns it on a refused POST,
+ * so a user who bypasses the UI reads the same sentence the UI would have shown them.
+ */
+export const DRAFT_REFUSAL_MESSAGE = "ההסמכה עדיין בטיוטה — טרם נפתחה להרשמה";
+
 /** How the brigade allocated seats on this certification. */
 export type AllocationMode = "open_to_all" | "battalion_quota";
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UNLIMITED_SEATS } from "@/lib/battalions/action-band";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { getBattalionByCode } from "@/lib/db/repositories/battalions";
@@ -52,6 +53,14 @@ export default async function BattalionCertificationPage({
   // One render instant, shared by the countdown seed and anything else time-dependent.
   const renderedAt = new Date();
 
+  const openToAll = quota.mode === "open_to_all";
+  // Three distinct states behind one nullable number: an unlimited pool, a real count, and
+  // "this battalion was given no allocation". Collapsing the first and third into "—" is
+  // what made an open cycle look like one the battalion had been left out of.
+  const unlimited = quota.allocated === null && !quota.missing_quota;
+  const poolLabel = unlimited ? UNLIMITED_SEATS : (quota.allocated ?? "—");
+  const freeLabel = unlimited ? UNLIMITED_SEATS : (quota.remaining ?? "—");
+
   return (
     <div className="space-y-6">
       <Link
@@ -79,15 +88,20 @@ export default async function BattalionCertificationPage({
         </p>
       </div>
 
-      {/* Only this battalion's numbers: the brigade-wide headcount would disclose the other
-          units' participation by arithmetic. */}
+      {/* Only this battalion's numbers in Mode B: the brigade-wide headcount would disclose
+          the other units' participation by arithmetic. On an open-to-all cycle the pool IS
+          brigade-wide, so the shared figures are the honest ones to show. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         <div className="rounded-lg p-3 bg-teal-50 border border-teal-200">
-          <div className="text-teal-700 font-medium">הוקצו לגדוד</div>
-          <div className="text-xl font-bold text-teal-900">{quota.allocated ?? "—"}</div>
+          {/* The pool has two different meanings, so it gets two different labels — calling
+              a shared brigade pool "הוקצו לגדוד" would claim seats nobody reserved. */}
+          <div className="text-teal-700 font-medium">
+            {openToAll ? "מקומות בהסמכה (לכלל הגדודים)" : "הוקצו לגדוד"}
+          </div>
+          <div className="text-xl font-bold text-teal-900">{poolLabel}</div>
         </div>
         <div className="rounded-lg p-3 bg-blue-50 border border-blue-200">
-          <div className="text-blue-700 font-medium">שובצו</div>
+          <div className="text-blue-700 font-medium">{openToAll ? "שובצו (כלל הגדודים)" : "שובצו"}</div>
           <div className="text-xl font-bold text-blue-900">
             {quota.used}
             {quota.allocated !== null ? ` / ${quota.allocated}` : ""}
@@ -95,13 +109,15 @@ export default async function BattalionCertificationPage({
         </div>
         <div
           className={`rounded-lg p-3 border ${
-            quota.remaining && quota.remaining > 0
+            quota.remaining === null || quota.remaining > 0
               ? "bg-amber-50 border-amber-200"
               : "bg-card"
           }`}
         >
           <div className="font-medium text-muted-foreground">מקומות פנויים</div>
-          <div className="text-xl font-bold">{quota.remaining ?? "—"}</div>
+          {/* NULL is unlimited, not unknown. "—" is reserved for the Mode-B case where this
+              battalion holds no allocation at all, which is a different fact. */}
+          <div className="text-xl font-bold">{freeLabel}</div>
         </div>
         <div className="rounded-lg p-3 bg-amber-50 border border-amber-200">
           <div className="text-amber-700 font-medium">עתודה</div>

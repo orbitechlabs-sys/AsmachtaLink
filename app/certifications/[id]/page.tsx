@@ -12,7 +12,14 @@ import { withSignedUrls } from "@/lib/storage/certification-files";
 import { getBattalionByCode, listBattalions } from "@/lib/db/repositories/battalions";
 import { getCurrentRole } from "@/lib/auth/current-role";
 import { getCurrentUser } from "@/lib/auth/user";
-import { battalionCodeOf, canManageCertifications, canEdit, isBrigade } from "@/lib/auth/permissions";
+import {
+  battalionCodeOf,
+  canManageCertifications,
+  canEdit,
+  canManageAnyRoster,
+  canManageRosterEntry,
+  isBrigade,
+} from "@/lib/auth/permissions";
 import { QuotaRegistrationPanel } from "@/components/certifications/quota-registration-panel";
 import { Button } from "@/components/ui/button";
 import { DateRange } from "@/components/ui/date-range";
@@ -61,6 +68,16 @@ export default async function CertificationDetailPage({
   const renderedAt = new Date();
   const canManage = canManageCertifications(role) && canEdit(me);
   const canEditData = canEdit(me);
+  // Roster writes have their own permission now, so a battalion editor gets the add/edit/
+  // delete affordances for their own soldiers. `canManage` above still governs everything
+  // that belongs to the certification itself — quotas, taxes, status, completion — and is
+  // untouched, which is what keeps certification management brigade-only.
+  const canAddRoster = canManageAnyRoster(me);
+  // Resolved here, on the server, from the one roster permission — the table only renders
+  // what this says. null = every battalion (brigade HQ).
+  const manageableBattalionIds = canEdit(me)
+    ? null
+    : battalions.filter((b) => canManageRosterEntry(me, b.id)).map((b) => b.id);
   const battalionMap = new Map(battalions.map((b) => [b.id, b]));
 
   // The caller's own battalion (from the view-scope cookie), used to show that
@@ -184,7 +201,7 @@ export default async function CertificationDetailPage({
               entries={roster}
               battalions={battalions}
             />
-            {canEditData && (
+            {canAddRoster && (
               <Button size="sm" asChild>
                 <Link href={`/certifications/${cert.id}/roster/new`}>
                   <Plus className="size-4" />
@@ -199,14 +216,14 @@ export default async function CertificationDetailPage({
           certificationName={cert.name}
           entries={roster}
           battalions={battalions}
-          canManage={canManage}
+          manageableBattalionIds={manageableBattalionIds}
         />
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-amber-700">עתודה</h2>
-          {canEditData && (
+          {canAddRoster && (
             <Button size="sm" variant="outline" className="border-amber-300 text-amber-700" asChild>
               <Link href={`/certifications/${cert.id}/roster/new?reserve=1`}>
                 <Plus className="size-4" />
@@ -221,7 +238,7 @@ export default async function CertificationDetailPage({
             certificationName={cert.name}
             entries={reserve}
             battalions={battalions}
-            canManage={canManage}
+            manageableBattalionIds={manageableBattalionIds}
           />
         ) : (
           <p className="text-sm text-muted-foreground">אין אנשי עתודה רשומים.</p>

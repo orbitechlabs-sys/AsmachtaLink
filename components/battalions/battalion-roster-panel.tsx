@@ -23,6 +23,7 @@ import type { BattalionQuotaUsage } from "@/lib/battalions/types";
 import { SoldierSearch } from "@/components/battalions/soldier-search";
 import type { SoldierLookupRow } from "@/lib/force-structure/types";
 import { formatLockMoment } from "@/lib/utils/registration-lock";
+import { DRAFT_REFUSAL_MESSAGE } from "@/lib/battalions/allocation-opportunities";
 
 interface Draft {
   full_name: string;
@@ -91,8 +92,15 @@ export function BattalionRosterPanel({
   const [movingId, setMovingId] = useState<number | null>(null);
 
   const base = `/api/battalions/${battalionId}/certifications/${certificationId}/roster`;
-  const noAllocation = quota.allocated === null;
+  // Mode B with no allocation for this battalion. Deliberately NOT `allocated === null`,
+  // which also matched a Mode A certification with unlimited capacity and wrongly told the
+  // battalion it had been left out of a cycle it was in fact free to join.
+  const noAllocation = quota.missing_quota === true;
+  // A טיוטה is brigade working state — its dates can still move and it can be cancelled.
+  const notOpen = quota.registration_open === false;
   const full = quota.remaining !== null && quota.remaining < 1;
+  const openToAll = quota.mode === "open_to_all";
+  const canRegister = !quota.locked && !noAllocation && !notOpen;
   // The full deadline, date + hour — a battalion told only the date would not know which
   // hour of it they were locked out at.
   const lockMoment = formatLockMoment(quota);
@@ -183,7 +191,7 @@ export function BattalionRosterPanel({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {variant === "page" && <h2 className="text-lg font-semibold">חיילי הגדוד בהסמכה</h2>}
-        {canEdit && !quota.locked && !noAllocation && variant === "page" && (
+        {canEdit && canRegister && variant === "page" && (
           <Button
             size="sm"
             variant={draft ? "outline" : "default"}
@@ -195,7 +203,14 @@ export function BattalionRosterPanel({
         )}
       </div>
 
-      {noAllocation && (
+      {/* Three distinct reasons the add button can be missing, each said out loud. An
+          unexplained absent control is the thing this replaces. */}
+      {notOpen && (
+        <p className="text-sm rounded-md border border-slate-200 bg-slate-50 p-2.5 text-slate-700">
+          {DRAFT_REFUSAL_MESSAGE}. שיבוץ חיילים יתאפשר לאחר שהחטיבה תפתח את ההסמכה להרשמה.
+        </p>
+      )}
+      {!notOpen && noAllocation && (
         <p className="text-sm rounded-md border border-amber-200 bg-amber-50 p-2.5 text-amber-800">
           לא הוקצו לגדוד מקומות בהסמכה זו. שיבוץ חיילים יתאפשר לאחר שהחטיבה תקצה מקומות
           לגדוד.
@@ -209,10 +224,14 @@ export function BattalionRosterPanel({
           .
         </p>
       )}
-      {!noAllocation && full && !quota.locked && (
+      {canRegister && full && (
         <p className="text-sm rounded-md border border-amber-200 bg-amber-50 p-2.5 text-amber-800">
-          ההקצאה לגדוד מלאה ({quota.used} מתוך {quota.allocated}). ניתן להוסיף חיילים
-          נוספים כעתודה בלבד.
+          {/* Two different pools, so two different sentences: a shared brigade-wide pool is
+              not "your allocation". */}
+          {openToAll
+            ? `כל המקומות בהסמכה זו תפוסים (${quota.used} מתוך ${quota.allocated}).`
+            : `ההקצאה לגדוד מלאה (${quota.used} מתוך ${quota.allocated}).`}{" "}
+          ניתן להוסיף חיילים נוספים כעתודה בלבד.
         </p>
       )}
 

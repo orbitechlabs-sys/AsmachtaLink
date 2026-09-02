@@ -3,6 +3,11 @@ import type { PoolClient } from "pg";
 import type { RosterEntry, RosterStatus } from "@/lib/types";
 import { ACTIVE_ROSTER_STATUSES } from "@/lib/utils/slots";
 import { isRegistrationLocked, type RegistrationLockFields } from "@/lib/utils/registration-lock";
+import {
+  REGISTRATION_OPEN_STATUSES,
+  type AllocationMode,
+  type RegistrationRefusal,
+} from "@/lib/battalions/allocation-opportunities";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
 import { createNotification } from "@/lib/db/repositories/notifications";
 import type { BattalionQuotaUsage } from "@/lib/battalions/types";
@@ -256,91 +261,206 @@ export async function countBattalionQuotaUsage(
   return row?.c ?? 0;
 }
 
-/** The battalion's allocation on a certification and how much of it is used. Drives both
- * the UI counter and the server-side limit. */
+/**
+ * What this battalion may do on this certification, in ONE query.
+ *
+ * MODE A vs MODE B. Zero rows in `certification_battalion_quotas` for the certification
+ * means it is open to every battalion: the pool is the certification's own `total_slots`,
+ * shared, and any battalion may register into it. That is the case this used to get wrong —
+ * it read only this battalion's quota row, found none, and reported `allocated: null`,
+ * which the panel rendered as "no seats were allocated to you" and the API turned into a
+ * `no_quota` refusal, while the opportunities band was advertising the very same
+ * certification as joinable.
+ *
+ * When quota rows DO exist the behaviour is unchanged: this battalion's own
+ * `allocated_slots` is the pool, and a battalion without a row is genuinely not invited.
+ *
+ * NO N+1: one statement resolves the status, the capacity, whether any quota exists, this
+ * battalion's own quota and the occupancy counts. עתודה is excluded from occupancy in both
+ * modes — a reserve soldier holds no seat.
+ */
 export async function getBattalionQuotaUsage(
   certificationId: number,
   battalionId: number
 ): Promise<BattalionQuotaUsage> {
-  const [quota, used, reserveRow, lock] = await Promise.all([
-    queryOne<{ allocated_slots: number }>(
-      `SELECT allocated_slots FROM certification_battalion_quotas
-        WHERE certification_id = $1 AND battalion_id = $2`,
-      [certificationId, battalionId]
-    ),
-    countBattalionQuotaUsage(certificationId, battalionId),
-    queryOne<{ c: number }>(
-      `SELECT COUNT(*)::int as c FROM roster_entries
-        WHERE certification_id = $1 AND battalion_id = $2 AND is_reserve = 1`,
-      [certificationId, battalionId]
-    ),
-    // The deadline is the certification's, not the allocation's: the same moment for every
-    // battalion, so this no longer varies with `battalionId` at all.
-    certificationLock(certificationId),
-  ]);
-  const allocated = quota?.allocated_slots ?? null;
+  const row = await queryOne<EligibilityRow>(ELIGIBILITY_SQL, [certificationId, battalionId]);
+
+  const lock: RegistrationLockFields = {
+    registration_lock_date: row?.registration_lock_date ?? null,
+    registration_lock_hour: row?.registration_lock_hour ?? null,
+  };
+  const view = eligibilityOf(row);
+
   return {
-    allocated,
-    used,
-    reserve: reserveRow?.c ?? 0,
-    remaining: allocated === null ? null : Math.max(allocated - used, 0),
+    allocated: view.seats,
+    used: view.taken,
+    reserve: row?.reserve_mine ?? 0,
+    remaining: view.remaining,
+    mode: view.mode,
+    missing_quota: view.missingQuota,
+    registration_open: view.statusAllowsRegistration,
     registration_lock_date: lock.registration_lock_date,
     registration_lock_hour: lock.registration_lock_hour ?? null,
     locked: isRegistrationLocked(lock),
   };
 }
 
-/** Why a quota-bounded registration was refused. The API maps each to a Hebrew message. */
-export type QuotaRefusal = "no_quota" | "quota_exceeded" | "registration_locked";
+/**
+ * The eligibility statement. Shared verbatim by {@link getBattalionQuotaUsage}, which
+ * renders the panel, and {@link addBattalionRosterEntry}, which authorises the write — so
+ * the button and the endpoint cannot disagree about whether a seat exists.
+ *
+ * `$1` certification id · `$2` battalion id.
+ */
+const ELIGIBILITY_SQL = `SELECT c.status,
+         c.total_slots,
+         c.registration_lock_date,
+         c.registration_lock_hour,
+         (SELECT COUNT(*)::int FROM certification_battalion_quotas q
+           WHERE q.certification_id = c.id) AS quota_rows,
+         qm.allocated_slots AS my_allocated,
+         COALESCE(occ.everyone, 0) AS taken_everyone,
+         COALESCE(occ.mine, 0) AS taken_mine,
+         COALESCE(occ.reserve_mine, 0) AS reserve_mine
+    FROM certifications c
+    LEFT JOIN certification_battalion_quotas qm
+      ON qm.certification_id = c.id AND qm.battalion_id = $2
+    LEFT JOIN (
+      -- One pass, three counts. is_reserve = 0 on the two occupancy counts is what keeps
+      -- עתודה out of the seat maths in both modes.
+      SELECT re.certification_id,
+             COUNT(*) FILTER (WHERE re.is_reserve = 0)::int AS everyone,
+             COUNT(*) FILTER (WHERE re.is_reserve = 0 AND re.battalion_id = $2)::int AS mine,
+             COUNT(*) FILTER (WHERE re.is_reserve = 1 AND re.battalion_id = $2)::int AS reserve_mine
+        FROM roster_entries re
+       WHERE re.certification_id = $1
+       GROUP BY re.certification_id
+    ) occ ON occ.certification_id = c.id
+   WHERE c.id = $1`;
+
+export interface EligibilityRow {
+  status: string;
+  total_slots: number | null;
+  quota_rows: number;
+  my_allocated: number | null;
+  taken_everyone: number;
+  taken_mine: number;
+  reserve_mine: number;
+  registration_lock_date: string | null;
+  registration_lock_hour: number | null;
+}
+
+export interface EligibilityView {
+  mode: AllocationMode;
+  /** Seats in the pool that applies to this battalion. NULL = unlimited. */
+  seats: number | null;
+  /** Non-reserve entries occupying that pool. */
+  taken: number;
+  /** seats − taken, floored at 0. NULL when unlimited. */
+  remaining: number | null;
+  statusAllowsRegistration: boolean;
+  /** Mode B only: this battalion holds no allocation, so it was not invited. */
+  missingQuota: boolean;
+}
+
+/**
+ * Folds one eligibility row into the numbers both callers need.
+ *
+ * A NULL pool is UNLIMITED and stays NULL the whole way through — never 0, and never a
+ * subtraction against NULL, which is how "unlimited" quietly becomes "full".
+ */
+export function eligibilityOf(row: EligibilityRow | undefined): EligibilityView {
+  if (!row) {
+    return {
+      mode: "battalion_quota",
+      seats: null,
+      taken: 0,
+      remaining: null,
+      statusAllowsRegistration: false,
+      missingQuota: true,
+    };
+  }
+  const openToAll = row.quota_rows === 0;
+  const seats = openToAll ? row.total_slots : row.my_allocated;
+  const taken = openToAll ? row.taken_everyone : row.taken_mine;
+  return {
+    mode: openToAll ? "open_to_all" : "battalion_quota",
+    seats,
+    taken,
+    remaining: seats === null ? null : Math.max(seats - taken, 0),
+    statusAllowsRegistration: (REGISTRATION_OPEN_STATUSES as string[]).includes(row.status),
+    missingQuota: !openToAll && row.my_allocated === null,
+  };
+}
+
+/** Why a registration was refused. Re-exported from the shared module so the repository,
+ * the API's Hebrew message map and the panel's banner name the same cases. */
+export type QuotaRefusal = RegistrationRefusal;
 
 export type BattalionRosterResult =
   | { ok: true; id: number }
   | { ok: false; reason: QuotaRefusal; allocated?: number; used?: number };
 
 /**
- * Adds one soldier of `input.battalion_id` to a certification, refusing when the
- * battalion has no allocation, when its allocation is already full, or when the
- * registration deadline on that allocation has passed.
+ * Adds one soldier of `input.battalion_id` to a certification, from the battalion route.
  *
- * The check and the insert share one transaction and the allocation row is taken
- * `FOR UPDATE`, so two simultaneous registrations cannot both read the same last free
- * slot and both take it.
+ * WHAT IT REFUSES, AND WHY EACH CASE EXISTS:
+ *   not_open            — the status does not admit registration. A טיוטה is brigade
+ *                         working state: its dates can still move and it can be cancelled,
+ *                         so a battalion must not staff it. The brigade route
+ *                         (`addRosterEntry`) is deliberately NOT subject to this — the
+ *                         brigade staffing its own draft is how one gets built.
+ *   no_quota            — Mode B, and this battalion was given no allocation.
+ *   quota_exceeded      — Mode B, and this battalion's allocation is full.
+ *   capacity_full       — Mode A, and the shared pool is full.
+ *   registration_locked — the deadline has passed.
+ *
+ * SEAT LIMITS ARE ENFORCED HERE, not merely by hiding a button: a hand-made POST that
+ * would oversubscribe `total_slots` is refused on this path.
+ *
+ * `FOR UPDATE` IS TAKEN ON THE CERTIFICATION ROW, not on the quota row as before. In Mode A
+ * the contended resource is the certification's shared pool, which no quota row represents;
+ * locking the certification serialises both modes under one rule, so two simultaneous
+ * registrations cannot read the same last free seat and both take it.
+ *
+ * The insert is `insertRosterEntry` — the same function the brigade route calls — so
+ * validation, duplicate handling and the audit record are identical on both paths.
  */
 export async function addBattalionRosterEntry(
   input: RosterEntryInput,
   changedByRole: string
 ): Promise<BattalionRosterResult> {
   return withTransaction<BattalionRosterResult>(async (client) => {
-    const quota = await queryOne<{ allocated_slots: number }>(
-      `SELECT allocated_slots FROM certification_battalion_quotas
-        WHERE certification_id = $1 AND battalion_id = $2
-        FOR UPDATE`,
+    // Taken before the counts are read, so they cannot go stale underneath us.
+    await execute(
+      `SELECT id FROM certifications WHERE id = $1 FOR UPDATE`,
+      [input.certification_id],
+      client
+    );
+
+    const row = await queryOne<EligibilityRow>(
+      ELIGIBILITY_SQL,
       [input.certification_id, input.battalion_id],
       client
     );
-    if (!quota) return { ok: false, reason: "no_quota" };
-    // The certification's single deadline — identical for every battalion, and compared
-    // as a full date+hour moment so a registration attempted after the closing hour is
-    // refused here rather than surviving until midnight.
-    const lock = await certificationLock(input.certification_id, client);
-    if (isRegistrationLocked(lock)) {
-      return { ok: false, reason: "registration_locked" };
+    if (!row) return { ok: false, reason: "no_quota" };
+
+    const view = eligibilityOf(row);
+
+    if (!view.statusAllowsRegistration) return { ok: false, reason: "not_open" };
+    if (view.missingQuota) return { ok: false, reason: "no_quota" };
+    if (isRegistrationLocked(row)) return { ok: false, reason: "registration_locked" };
+
+    // עתודה sits outside the pool by design, so it is never bounded by it.
+    if (!input.is_reserve && view.remaining !== null && view.remaining < 1) {
+      return {
+        ok: false,
+        reason: view.mode === "open_to_all" ? "capacity_full" : "quota_exceeded",
+        allocated: view.seats ?? undefined,
+        used: view.taken,
+      };
     }
-    if (!input.is_reserve) {
-      const used = await countBattalionQuotaUsage(
-        input.certification_id,
-        input.battalion_id,
-        client
-      );
-      if (used + 1 > quota.allocated_slots) {
-        return {
-          ok: false,
-          reason: "quota_exceeded",
-          allocated: quota.allocated_slots,
-          used,
-        };
-      }
-    }
+
     return { ok: true, id: await insertRosterEntry(input, changedByRole, client) };
   });
 }
