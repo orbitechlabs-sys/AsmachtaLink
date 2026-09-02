@@ -11,6 +11,7 @@ import type {
 import { ACTIVE_ROSTER_STATUSES, computeSlotsRemaining } from "@/lib/utils/slots";
 import { normalizeLockHour } from "@/lib/utils/registration-lock";
 import { recordStatusChange } from "@/lib/db/repositories/audit";
+import { VALID_TRANSITIONS } from "@/lib/certifications/transitions";
 import { createNotification } from "@/lib/db/repositories/notifications";
 
 export interface CertificationFilters {
@@ -239,15 +240,6 @@ export async function deleteCertification(id: number) {
   });
 }
 
-const VALID_TRANSITIONS: Record<CertificationStatus, CertificationStatus[]> = {
-  draft: ["open", "cancelled"],
-  open: ["full", "closed", "in_progress", "cancelled"],
-  full: ["open", "closed", "in_progress", "cancelled"],
-  closed: ["open", "in_progress", "cancelled"],
-  in_progress: ["completed", "cancelled"],
-  completed: [],
-  cancelled: [],
-};
 
 export async function updateCertificationStatus(
   id: number,

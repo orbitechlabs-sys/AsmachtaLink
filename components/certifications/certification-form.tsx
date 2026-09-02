@@ -225,13 +225,30 @@ export function CertificationForm({
             )
           )}
         </div>
-        <div className="flex items-center gap-2 pt-6">
-          <Checkbox
-            checked={Boolean(watch("registration_open"))}
-            onCheckedChange={(v) => setValue("registration_open", Boolean(v))}
-            id="registration_open"
-          />
-          <Label htmlFor="registration_open">פתוחה להרשמת גדודים</Label>
+        {/* The checkbox is the ONLY thing that decides draft vs open at creation (see
+            createCertification), and it used to sit here unlabelled as to its consequence —
+            so a certification could be created as a טיוטה without the creator ever being
+            told. The default is deliberately unchanged; only the explanation is new. */}
+        <div className="pt-6 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={Boolean(watch("registration_open"))}
+              onCheckedChange={(v) => setValue("registration_open", Boolean(v))}
+              id="registration_open"
+            />
+            <Label htmlFor="registration_open">פתוחה להרשמת גדודים</Label>
+          </div>
+          <p
+            className={
+              watch("registration_open")
+                ? "text-xs text-emerald-700"
+                : "text-xs text-amber-800"
+            }
+          >
+            {watch("registration_open")
+              ? "ההסמכה תיווצר בסטטוס „פתוחה להרשמה“ — הגדודים יוכלו לשבץ אליה חיילים מיד."
+              : "ההסמכה תיווצר בסטטוס „טיוטה“ — הגדודים לא יוכלו לשבץ אליה חיילים עד שתיפתח להרשמה מדף ההסמכה."}
+          </p>
         </div>
       </div>
 

@@ -74,6 +74,30 @@ export function canEditAnything(user: AppUser | null): boolean {
   return canEdit(user) || (!!user && user.status === "approved" && user.role === "editor_battalion");
 }
 
+// --- Certification lifecycle --------------------------------------------------------
+
+/**
+ * May this user move a certification between statuses — in particular draft -> open?
+ *
+ * WHAT THIS REPLACES. The status route authorized with
+ * `canManageCertifications(await getCurrentRole())`, i.e. from the `active_role` cookie,
+ * which is a view selector any client can set and which `getCurrentRole()` defaults to
+ * "brigade" when absent. It failed in both directions: the route trusted a client-supplied
+ * value and had no session check of its own, while a genuine super-admin or editor whose
+ * cookie was parked on a battalion preview — the normal state after using the role switcher
+ * — silently lost both the button and the endpoint. Only 6 of 109 recorded draft creations
+ * were ever opened; that lockout is the leading explanation.
+ *
+ * It delegates to `canEdit`, so it is exactly the set of global write roles
+ * (super_admin / editor) and no brigade capability is narrowed. Battalion-scoped roles are
+ * excluded, as they were before: a battalion manages names on a cycle, never the cycle.
+ *
+ * TAKES THE AUTHENTICATED `AppUser`, NEVER A `Role`. The `Role` axis is the cookie.
+ */
+export function canManageCertificationStatus(user: AppUser | null): boolean {
+  return canEdit(user);
+}
+
 // --- Roster entries -----------------------------------------------------------------
 
 /**

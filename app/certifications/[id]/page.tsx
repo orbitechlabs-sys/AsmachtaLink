@@ -17,6 +17,7 @@ import {
   canManageCertifications,
   canEdit,
   canManageAnyRoster,
+  canManageCertificationStatus,
   canManageRosterEntry,
   isBrigade,
 } from "@/lib/auth/permissions";
@@ -66,7 +67,13 @@ export default async function CertificationDetailPage({
   // One instant for the whole render, so the lock state and the countdown seed cannot be
   // taken a few milliseconds apart and disagree about an hour boundary.
   const renderedAt = new Date();
+  // Certification-level actions (quotas, taxes, completion, delete) keep their existing
+  // cookie-scoped gate — out of scope here.
   const canManage = canManageCertifications(role) && canEdit(me);
+  // The STATUS control is gated on the authenticated session alone, so a brigade user
+  // previewing a battalion keeps their own capability instead of silently losing the
+  // button. Same predicate the PATCH route runs.
+  const canChangeStatus = canManageCertificationStatus(me);
   const canEditData = canEdit(me);
   // Roster writes have their own permission now, so a battalion editor gets the add/edit/
   // delete affordances for their own soldiers. `canManage` above still governs everything
@@ -130,7 +137,21 @@ export default async function CertificationDetailPage({
         </div>
       </div>
 
-      <CertificationStatusChanger certification={cert} canManage={canManage} />
+      <CertificationStatusChanger certification={cert} canManage={canChangeStatus} />
+
+      {/* A טיוטה looks identical to an open certification on this page apart from one small
+          badge, and 65 of the existing drafts already carry roster entries a brigade user
+          added — so nothing on screen said the battalions still could not reach it. Display
+          only: it reads the stored status and changes nothing. */}
+      {cert.status === "draft" && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <span className="font-bold">ההסמכה נמצאת בסטטוס „טיוטה“.</span>{" "}
+          הגדודים אינם יכולים לשבץ אליה חיילים כל עוד היא בטיוטה.{" "}
+          {canChangeStatus
+            ? "לחיצה על „פתח להרשמה“ למעלה תפתח אותה לשיבוץ ותשלח התראה לגדודים."
+            : "פתיחת ההסמכה להרשמה מתבצעת על ידי מנהל חטיבתי."}
+        </div>
+      )}
 
       {showConfirmPanel && (
         <ConfirmCompletionPanel
