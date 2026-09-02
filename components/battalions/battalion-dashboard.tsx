@@ -18,7 +18,8 @@ import { BattalionRosterPanel } from "@/components/battalions/battalion-roster-p
 import {
   assignLanes,
   AWAITING_NAMES,
-  NEW_ALLOCATION_BADGE,
+  newAllocationForBattalion,
+  NEW_BATTALION_ALLOCATION,
   OPEN_TO_ALL,
   WeekRow,
   WeekdayHeader,
@@ -345,11 +346,23 @@ export function BattalionDashboard({
             </h2>
           </div>
 
+          {/* The two kinds of allocation sit SIDE BY SIDE rather than stacked, so neither
+              reads as a sub-section of the other — they are two independent offers. Each
+              column keeps its own header and its own cards; on a narrow screen they stack,
+              because two 218px card columns do not fit. A column with nothing in it is
+              dropped entirely rather than left as an empty heading. */}
+          <div
+            className={cn(
+              "grid gap-x-5 gap-y-3 items-start",
+              battalionQuota.length > 0 && openToAll.length > 0 && "lg:grid-cols-2"
+            )}
+          >
           {battalionQuota.length > 0 && (
-            // The dominant group: seats the brigade set aside for THIS battalion and
-            // nobody else. The amber and the badge are what make it read first.
+          <div>
+            {/* The battalion's own allocation: seats the brigade set aside for this unit
+                and nobody else. The amber and the badge are what make it read first. */}
             <h3
-              className="text-[0.8rem] font-extrabold mb-2 flex items-center gap-2"
+              className="text-[0.8rem] font-extrabold mb-2 flex items-center gap-2 flex-wrap"
               style={{ color: AWAITING_NAMES.ink }}
             >
               <span
@@ -359,11 +372,10 @@ export function BattalionDashboard({
                   borderColor: AWAITING_NAMES.line,
                 }}
               >
-                {NEW_ALLOCATION_BADGE}
+                {NEW_BATTALION_ALLOCATION}
               </span>
               {AWAITING_NAMES.label}
             </h3>
-          )}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(218px,1fr))] gap-2.5">
             {battalionQuota.map((c) => {
               // The inline "fill names" panel needs the full allocation row; the card
@@ -396,7 +408,7 @@ export function BattalionDashboard({
                         className="inline-block rounded-full px-1.5 py-0.5 text-[0.6rem] font-extrabold mb-1"
                         style={{ backgroundColor: AWAITING_NAMES.line, color: AWAITING_NAMES.ink }}
                       >
-                        {NEW_ALLOCATION_BADGE}
+                        {newAllocationForBattalion(battalion.name)}
                       </span>
                       <span className="block text-[0.86rem] font-extrabold leading-tight">{c.name}</span>
                       <span className="block text-[0.66rem] font-semibold text-muted-foreground mt-0.5">
@@ -447,11 +459,13 @@ export function BattalionDashboard({
               );
             })}
           </div>
+          </div>
+          )}
 
           {openToAll.length > 0 && (
-            <>
+            <div>
               <h3
-                className="text-[0.8rem] font-extrabold mt-3 mb-2 flex items-center gap-2"
+                className="text-[0.8rem] font-extrabold mb-2 flex items-center gap-2 flex-wrap"
                 style={{ color: OPEN_TO_ALL.ink }}
               >
                 <span
@@ -460,7 +474,7 @@ export function BattalionDashboard({
                 >
                   {OPEN_TO_ALL.label}
                 </span>
-                מאגר מקומות משותף לכלל הגדודים
+                {OPEN_TO_ALL.bandLabel}
               </h3>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(218px,1fr))] gap-2.5">
                 {openToAll.map((c) => {
@@ -504,12 +518,9 @@ export function BattalionDashboard({
                           </span>
                         )}
                       </span>
-                      <span
-                        className="text-[0.73rem] font-extrabold"
-                        style={{ color: OPEN_TO_ALL.ink }}
-                      >
-                        {OPEN_TO_ALL.bandLabel}
-                      </span>
+                      {/* No repeat of the column header's wording here — the badge above
+                          already names the offer, and the header states it in full one
+                          line up. */}
                       <span className="flex items-center justify-between gap-2">
                         <span
                           className="text-[0.73rem] font-extrabold tabular-nums"
@@ -532,8 +543,9 @@ export function BattalionDashboard({
                   );
                 })}
               </div>
-            </>
+            </div>
           )}
+          </div>
 
           {selected && (
             <div className="mt-3 bg-white border-2 rounded-xl p-4" style={{ borderColor: "#0f7a5c" }}>
@@ -613,7 +625,7 @@ export function BattalionDashboard({
                 color: AWAITING_NAMES.ink,
               }}
             >
-              {NEW_ALLOCATION_BADGE} — {AWAITING_NAMES.label}
+              {NEW_BATTALION_ALLOCATION} — {AWAITING_NAMES.label}
             </span>
             <span
               className="rounded-full px-2 py-0.5 border border-dashed"

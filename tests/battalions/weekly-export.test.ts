@@ -81,6 +81,7 @@ describe("buildWeeklyCertificationsPdf", () => {
           allocated_slots: 5,
           registered: 0,
           has_quota: true,
+          opportunity: "battalion_quota" as const,
         },
         {
           name: "החייאה",
@@ -91,6 +92,9 @@ describe("buildWeeklyCertificationsPdf", () => {
           allocated_slots: null,
           registered: 2,
           has_quota: false,
+          // An ended cycle is no longer an opportunity, so it prints untinted — the same
+          // rule the band and the calendar apply.
+          opportunity: null,
         },
       ],
     });
@@ -113,6 +117,7 @@ describe("buildWeeklyCertificationsPdf", () => {
       allocated_slots: 5,
       registered: 0,
       has_quota: true,
+      opportunity: "battalion_quota" as const,
     }));
     const pdf = buildWeeklyCertificationsPdf({ ...base, rows: many });
     expect(isPdf(pdf)).toBe(true);

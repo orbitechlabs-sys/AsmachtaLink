@@ -115,6 +115,27 @@ export const AWAITING_NAMES = {
 } as const;
 
 /**
+ * The two kinds of new allocation, named for WHO issued them.
+ *
+ * "גדודית" (battalion) is an allocation the brigade set aside for one named battalion;
+ * "חטיבית" (brigade) is a brigade-wide pool anyone may register into. Naming them by
+ * issuer rather than by mechanism is what lets a reader tell them apart at a glance.
+ */
+export const NEW_BATTALION_ALLOCATION = "הקצאה גדודית חדשה";
+export const NEW_BRIGADE_ALLOCATION = "הקצאה חטיבית חדשה";
+
+/**
+ * The badge inside a targeted allocation card, naming the battalion it was issued to:
+ * "הקצאה חדשה לגדוד 9308".
+ *
+ * The battalion's own name is prefixed with "ל", which reads correctly for every unit in
+ * the table — "לגדוד 9308", "לגדס\"מ", "למפח\"ט" — so it needs no per-unit special case.
+ */
+export function newAllocationForBattalion(battalionName: string): string {
+  return `הקצאה חדשה ל${battalionName}`;
+}
+
+/**
  * "Open to every battalion" — a shared seat pool this unit may register into.
  *
  * It gets its OWN colour family rather than borrowing the amber above. Both states mean
@@ -130,14 +151,11 @@ export const OPEN_TO_ALL = {
   ink: "#075985",
   line: "#38bdf8",
   /** The calendar legend chip and the band badge. */
-  label: "פתוח לכלל הגדודים",
-  /** The dashboard band card, where there is room to say what is owed. */
-  bandLabel: "פתוח לכלל הגדודים — ניתן לרשום שמות",
+  label: NEW_BRIGADE_ALLOCATION,
+  /** The dashboard band card, where there is room to say what the offer actually is. */
+  bandLabel: "הקצאה פתוחה לרישום לכלל הגדודים",
 } as const;
 
-/** The badge on a targeted allocation. Short and loud on purpose: this is the case the
- * band is built to make impossible to miss. */
-export const NEW_ALLOCATION_BADGE = "הקצאה חדשה";
 
 export interface WeekRowProps {
   week: Date[];

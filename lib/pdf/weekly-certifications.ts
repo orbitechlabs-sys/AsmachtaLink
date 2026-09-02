@@ -51,6 +51,16 @@ export interface WeeklyExportRow {
   end_date: string | null;
   status: BattalionAllocation["status"];
   allocated_slots: number | null;
+  /**
+   * The row's allocation mode when it is still an OPEN opportunity today, else null.
+   *
+   * It arrives from `listAllocationOpportunities` — the same set the dashboard band and
+   * the calendar highlight read — rather than being re-derived here. The old local rule
+   * (`has_quota && registered === 0`) answered a different question: it tinted an ended
+   * cycle forever, never tinted a half-filled allocation the band was listing as open, and
+   * could not see an open-to-all pool at all.
+   */
+  opportunity: "battalion_quota" | "open_to_all" | null;
   registered: number;
   has_quota: boolean;
 }
@@ -81,6 +91,9 @@ function fmtDate(iso: string | null | undefined): string {
  * matches the amber state in the weekly view (AWAITING_NAMES.label there).
  */
 function fillCell(row: WeeklyExportRow): string {
+  if (row.opportunity === "open_to_all") {
+    return `${row.registered} משובצים · הקצאה חטיבית פתוחה`;
+  }
   if (!row.has_quota) return `${row.registered} משובצים · ללא הקצאה`;
   if (row.registered === 0) return `הוקצו ${row.allocated_slots ?? 0} — טרם שובצו שמות`;
   return `${row.registered}/${row.allocated_slots ?? 0} שובצו`;
@@ -205,11 +218,15 @@ export function buildWeeklyCertificationsPdf(input: WeeklyExportInput): Uint8Arr
       doc.setFontSize(9);
     }
 
-    // The amber "allocated, nobody named" state from the weekly view, carried into print as
-    // a tint so the same rows stand out in both places.
-    const awaiting = row.has_quota && row.registered === 0;
-    if (awaiting) {
+    // Exactly the rows the band lists and the calendar paints, in exactly the two colours
+    // it paints them: amber for the battalion's own allocation, sky for the brigade-wide
+    // pool. Expired cycles carry no `opportunity` and so print untinted, matching the
+    // screen. amber-100 (#fef3c7) / sky-100 (#e0f2fe).
+    if (row.opportunity === "battalion_quota") {
       doc.setFillColor(254, 243, 199);
+      doc.rect(MARGIN, y, printable, rowHeight, "F");
+    } else if (row.opportunity === "open_to_all") {
+      doc.setFillColor(224, 242, 254);
       doc.rect(MARGIN, y, printable, rowHeight, "F");
     }
 

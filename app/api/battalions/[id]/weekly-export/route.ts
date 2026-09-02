@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getBattalionById } from "@/lib/db/repositories/battalions";
-import { listBattalionAllocations } from "@/lib/db/repositories/battalion-dashboard";
+import {
+  listAllocationOpportunities,
+  listBattalionAllocations,
+} from "@/lib/db/repositories/battalion-dashboard";
 import { requireApprovedUser } from "@/lib/auth/user";
 import { denyOutOfScope } from "@/lib/auth/scope";
 import {
@@ -77,7 +80,15 @@ export async function GET(
   const battalion = await getBattalionById(battalionId);
   if (!battalion) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const rows = await listBattalionAllocations(battalionId, { from, to });
+  // The export and the screen read the SAME eligibility set, so a row tinted in the browser
+  // is tinted in the PDF and an expired one is tinted in neither.
+  const [rows, opportunities] = await Promise.all([
+    listBattalionAllocations(battalionId, { from, to }),
+    listAllocationOpportunities(battalionId),
+  ]);
+  const opportunityByCert = new Map(
+    opportunities.map((o) => [o.certification_id, o.mode] as const)
+  );
 
   const pdf = buildWeeklyCertificationsPdf({
     battalionCode: battalion.code,
@@ -94,6 +105,7 @@ export async function GET(
       allocated_slots: r.allocated_slots,
       registered: r.registered,
       has_quota: r.has_quota,
+      opportunity: opportunityByCert.get(r.certification_id) ?? null,
     })),
   });
 
